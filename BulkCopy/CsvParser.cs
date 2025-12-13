@@ -7,49 +7,10 @@ public class CsvParser
 {
     public static DataTable LoadCsvToDataTable(string filePath)
     {
-        DataTable dataTable = new DataTable();
-        
         using (StreamReader reader = new StreamReader(filePath))
         {
-            // Read first row for headers
-            string? firstRow = ReadCsvRow(reader);
-            if (string.IsNullOrEmpty(firstRow))
-            {
-                throw new InvalidOperationException("CSV file is empty or has no header row.");
-            }
-
-            // Parse headers and create columns
-            string[] headers = ParseCsvLine(firstRow);
-            foreach (string header in headers)
-            {
-                dataTable.Columns.Add(header.Trim());
-            }
-
-            // Read data rows
-            string? row;
-            while ((row = ReadCsvRow(reader)) != null)
-            {
-                if (string.IsNullOrWhiteSpace(row))
-                    continue;
-
-                string[] fields = ParseCsvLine(row);
-                
-                // Handle rows with fewer fields than headers
-                if (fields.Length < headers.Length)
-                {
-                    int originalLength = fields.Length;
-                    Array.Resize(ref fields, headers.Length);
-                    for (int i = originalLength; i < headers.Length; i++)
-                    {
-                        fields[i] = string.Empty;
-                    }
-                }
-
-                dataTable.Rows.Add(fields);
-            }
+            return LoadCsvFromStream(reader);
         }
-
-        return dataTable;
     }
 
     public static DataTable LoadCsvFromStream(StreamReader reader)
