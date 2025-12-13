@@ -44,6 +44,18 @@ cd BulkCopy
 dotnet build
 ```
 
+### Run tests
+```bash
+cd BulkCopy.Tests
+dotnet test
+```
+
+All 18 unit tests cover:
+- Simple and complex CSV parsing
+- Quoted fields with commas, newlines, and escaped quotes
+- Different line ending formats (Unix, Windows, Mac)
+- Edge cases like empty files and variable-length rows
+
 ### Publish as self-contained Linux binary
 ```bash
 cd BulkCopy
