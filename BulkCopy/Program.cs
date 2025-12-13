@@ -114,8 +114,18 @@ class Program
 
             if (c == '"')
             {
-                inQuotes = !inQuotes;
                 row.Append(c);
+                // Check if this is an escaped quote (double quote)
+                if (inQuotes && reader.Peek() == '"')
+                {
+                    // Escaped quote - read the next quote and don't toggle state
+                    row.Append((char)reader.Read());
+                }
+                else
+                {
+                    // Regular quote - toggle the inQuotes state
+                    inQuotes = !inQuotes;
+                }
             }
             else if (c == '\n' && !inQuotes)
             {
@@ -134,13 +144,9 @@ class Program
                 if (nextChar == '\n')
                 {
                     reader.Read(); // Consume the \n
-                    return row.Length > 0 ? row.ToString() : null;
                 }
-                else
-                {
-                    // Mac-style line ending (\r only)
-                    return row.Length > 0 ? row.ToString() : null;
-                }
+                // Return row (handles both Windows \r\n and Mac \r line endings)
+                return row.Length > 0 ? row.ToString() : null;
             }
             else
             {
