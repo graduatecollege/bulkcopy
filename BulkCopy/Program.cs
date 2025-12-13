@@ -17,7 +17,16 @@ class Program
         string csvFilePath = args[0];
         string connectionString = args[1];
         string tableName = args[2];
-        int batchSize = args.Length > 3 ? int.Parse(args[3]) : 1000;
+        int batchSize = 1000;
+        
+        if (args.Length > 3)
+        {
+            if (!int.TryParse(args[3], out batchSize) || batchSize <= 0)
+            {
+                Console.WriteLine("Error: Batch size must be a positive integer.");
+                return 1;
+            }
+        }
 
         try
         {
@@ -77,11 +86,11 @@ class Program
                 // Handle rows with fewer fields than headers
                 if (fields.Length < headers.Length)
                 {
+                    int originalLength = fields.Length;
                     Array.Resize(ref fields, headers.Length);
-                    for (int i = 0; i < fields.Length; i++)
+                    for (int i = originalLength; i < headers.Length; i++)
                     {
-                        if (fields[i] == null)
-                            fields[i] = string.Empty;
+                        fields[i] = string.Empty;
                     }
                 }
 
