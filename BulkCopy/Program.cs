@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using System.Text;
 using Microsoft.Data.SqlClient;
 
 namespace BulkCopy;
@@ -60,28 +61,28 @@ class Program
         
         using (StreamReader reader = new StreamReader(filePath))
         {
-            // Read header line
-            string? headerLine = reader.ReadLine();
-            if (string.IsNullOrEmpty(headerLine))
+            // Read first row for headers
+            string? firstRow = ReadCsvRow(reader);
+            if (string.IsNullOrEmpty(firstRow))
             {
                 throw new InvalidOperationException("CSV file is empty or has no header row.");
             }
 
             // Parse headers and create columns
-            string[] headers = ParseCsvLine(headerLine);
+            string[] headers = ParseCsvLine(firstRow);
             foreach (string header in headers)
             {
                 dataTable.Columns.Add(header.Trim());
             }
 
-            // Read data lines
-            string? line;
-            while ((line = reader.ReadLine()) != null)
+            // Read data rows
+            string? row;
+            while ((row = ReadCsvRow(reader)) != null)
             {
-                if (string.IsNullOrWhiteSpace(line))
+                if (string.IsNullOrWhiteSpace(row))
                     continue;
 
-                string[] fields = ParseCsvLine(line);
+                string[] fields = ParseCsvLine(row);
                 
                 // Handle rows with fewer fields than headers
                 if (fields.Length < headers.Length)
@@ -99,6 +100,56 @@ class Program
         }
 
         return dataTable;
+    }
+
+    static string? ReadCsvRow(StreamReader reader)
+    {
+        StringBuilder row = new StringBuilder();
+        bool inQuotes = false;
+        int currentChar;
+
+        while ((currentChar = reader.Read()) != -1)
+        {
+            char c = (char)currentChar;
+
+            if (c == '"')
+            {
+                inQuotes = !inQuotes;
+                row.Append(c);
+            }
+            else if (c == '\n' && !inQuotes)
+            {
+                // End of row found (not inside quotes)
+                // Remove trailing \r if present
+                if (row.Length > 0 && row[row.Length - 1] == '\r')
+                {
+                    row.Length--;
+                }
+                return row.Length > 0 ? row.ToString() : null;
+            }
+            else if (c == '\r' && !inQuotes)
+            {
+                // Check if next char is \n (Windows line ending)
+                int nextChar = reader.Peek();
+                if (nextChar == '\n')
+                {
+                    reader.Read(); // Consume the \n
+                    return row.Length > 0 ? row.ToString() : null;
+                }
+                else
+                {
+                    // Mac-style line ending (\r only)
+                    return row.Length > 0 ? row.ToString() : null;
+                }
+            }
+            else
+            {
+                row.Append(c);
+            }
+        }
+
+        // Return the last row if any content remains
+        return row.Length > 0 ? row.ToString() : null;
     }
 
     static string[] ParseCsvLine(string line)
