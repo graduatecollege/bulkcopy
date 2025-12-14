@@ -54,6 +54,15 @@ class Program
         }
     }
 
+    static void ConfigureColumnMappings(SqlBulkCopy bulkCopy, int columnCount)
+    {
+        // Map columns by ordinal position
+        for (int i = 0; i < columnCount; i++)
+        {
+            bulkCopy.ColumnMappings.Add(i, i);
+        }
+    }
+
     static (int SuccessCount, int FailedCount) BulkCopyToSqlServer(string connectionString, string tableName, DataTable dataTable, int batchSize)
     {
         int successCount = 0;
@@ -72,11 +81,7 @@ class Program
                     bulkCopy.BatchSize = batchSize;
                     bulkCopy.BulkCopyTimeout = 300; // 5 minutes timeout
 
-                    // Map columns by ordinal position
-                    for (int i = 0; i < dataTable.Columns.Count; i++)
-                    {
-                        bulkCopy.ColumnMappings.Add(i, i);
-                    }
+                    ConfigureColumnMappings(bulkCopy, dataTable.Columns.Count);
 
                     // Event handlers for progress tracking
                     bulkCopy.SqlRowsCopied += (sender, e) =>
@@ -109,13 +114,13 @@ class Program
     {
         int successCount = 0;
         int failedCount = 0;
-        int currentRow = 0;
+        int currentRow = 0; // 0-based index for accessing sourceTable.Rows
         
         while (currentRow < sourceTable.Rows.Count)
         {
             // Create a batch DataTable
             DataTable batchTable = sourceTable.Clone();
-            int batchStartRow = currentRow;
+            int batchStartRow = currentRow; // 0-based index
             int rowsInBatch = Math.Min(batchSize, sourceTable.Rows.Count - currentRow);
             
             for (int i = 0; i < rowsInBatch; i++)
@@ -132,14 +137,11 @@ class Program
                     bulkCopy.BatchSize = batchSize;
                     bulkCopy.BulkCopyTimeout = 300;
 
-                    // Map columns by ordinal position
-                    for (int i = 0; i < sourceTable.Columns.Count; i++)
-                    {
-                        bulkCopy.ColumnMappings.Add(i, i);
-                    }
+                    ConfigureColumnMappings(bulkCopy, sourceTable.Columns.Count);
 
                     bulkCopy.WriteToServer(batchTable);
                     successCount += rowsInBatch;
+                    // Use 1-based row numbers in user-facing messages
                     Console.WriteLine($"Batch succeeded: rows {batchStartRow + 1} to {batchStartRow + rowsInBatch}");
                 }
                 
@@ -153,7 +155,7 @@ class Program
                 // Process this batch row by row
                 for (int i = 0; i < rowsInBatch; i++)
                 {
-                    int rowNumber = batchStartRow + i + 1; // 1-based row number for logging
+                    int rowNumber = batchStartRow + i + 1; // Convert to 1-based for user-facing messages
                     DataTable singleRowTable = sourceTable.Clone();
                     singleRowTable.ImportRow(sourceTable.Rows[batchStartRow + i]);
                     
@@ -165,11 +167,7 @@ class Program
                             bulkCopy.BatchSize = 1;
                             bulkCopy.BulkCopyTimeout = 300;
 
-                            // Map columns by ordinal position
-                            for (int j = 0; j < sourceTable.Columns.Count; j++)
-                            {
-                                bulkCopy.ColumnMappings.Add(j, j);
-                            }
+                            ConfigureColumnMappings(bulkCopy, sourceTable.Columns.Count);
 
                             bulkCopy.WriteToServer(singleRowTable);
                             successCount++;
@@ -183,7 +181,11 @@ class Program
                 }
                 
                 currentRow += rowsInBatch;
-                Console.WriteLine($"Resuming batch processing from row {currentRow + 1}...");
+                // Continue processing remaining rows (still using row-by-row error handling mode)
+                if (currentRow < sourceTable.Rows.Count)
+                {
+                    Console.WriteLine($"Continuing from row {currentRow + 1}...");
+                }
             }
         }
         
