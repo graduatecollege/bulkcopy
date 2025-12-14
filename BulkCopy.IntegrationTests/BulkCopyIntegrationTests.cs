@@ -210,7 +210,24 @@ public class BulkCopyIntegrationTests : IAsyncLifetime
     {
         var fullConnectionString = $"{connectionString};Database={TestDatabase}";
         var projectDir = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", "BulkCopy");
-        var bulkCopyPath = Path.Combine(projectDir, "bin", "Release", "net10.0", "linux-x64", "BulkCopy");
+        
+        // Determine runtime identifier based on current platform
+        var rid = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)
+            ? "win-x64"
+            : System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX)
+                ? "osx-x64"
+                : "linux-x64";
+        
+        var bulkCopyPath = Path.Combine(projectDir, "bin", "Release", "net10.0", rid, "BulkCopy");
+        if (!File.Exists(bulkCopyPath))
+        {
+            // Fallback: try without RID-specific folder
+            bulkCopyPath = Path.Combine(projectDir, "bin", "Release", "net10.0", "BulkCopy");
+            if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+            {
+                bulkCopyPath += ".exe";
+            }
+        }
         
         var process = new System.Diagnostics.Process
         {
