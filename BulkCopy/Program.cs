@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using System.Diagnostics;
 using Microsoft.Data.SqlClient;
 
 namespace BulkCopy;
@@ -22,7 +23,7 @@ public class Program
 
         string csvFilePath = args[0];
         string connectionString = args[1];
-        string tableName = args[2];
+        string destinationTable = args[2];
         int batchSize = 1000;
         string? errorDatabase = null;
         string? errorTable = null;
@@ -73,16 +74,22 @@ public class Program
                 return 1;
             }
 
-            Console.WriteLine($"Starting bulk copy from {csvFilePath} to {tableName}...");
+            Console.WriteLine($"Starting bulk copy from {csvFilePath} to {destinationTable}...");
             if (errorDatabase != null)
             {
                 Console.WriteLine($"Error logging enabled: {errorDatabase}.{errorTable}");
             }
             
+            var csvLoadStopwatch = Stopwatch.StartNew();
             DataTable dataTable = CsvParser.LoadCsvToDataTable(csvFilePath);
+            csvLoadStopwatch.Stop();
             Console.WriteLine($"Loaded {dataTable.Rows.Count} rows from CSV file.");
+            Console.WriteLine($"CSV loading took {csvLoadStopwatch.Elapsed.TotalSeconds:F2}s ({csvLoadStopwatch.ElapsedMilliseconds}ms).");
 
-            var result = BulkCopyToSqlServer(connectionString, tableName, dataTable, batchSize, errorDatabase, errorTable);
+            var bulkCopyStopwatch = Stopwatch.StartNew();
+            var result = BulkCopyToSqlServer(connectionString, destinationTable, dataTable, batchSize, errorDatabase, errorTable);
+            bulkCopyStopwatch.Stop();
+            Console.WriteLine($"Bulk copy took {bulkCopyStopwatch.Elapsed.TotalSeconds:F2}s ({bulkCopyStopwatch.ElapsedMilliseconds}ms).");
             
             Console.WriteLine($"Import completed. Successfully imported {result.SuccessCount} rows, failed {result.FailedCount} rows.");
             return 0;
@@ -104,7 +111,7 @@ public class Program
         }
     }
 
-    static (int SuccessCount, int FailedCount) BulkCopyToSqlServer(string connectionString, string tableName, DataTable dataTable, int batchSize, string? errorDatabase, string? errorTable)
+    static (int SuccessCount, int FailedCount) BulkCopyToSqlServer(string connectionString, string destinationTable, DataTable dataTable, int batchSize, string? errorDatabase, string? errorTable)
     {
         int successCount = 0;
         int failedCount = 0;
@@ -114,7 +121,7 @@ public class Program
             connection.Open();
             
             // Get source database from connection
-            string sourceDatabase = connection.Database;
+            string destinationDatabase = connection.Database;
             
             // Ensure error table exists if error logging is enabled
             if (errorDatabase != null && errorTable != null)
@@ -127,7 +134,7 @@ public class Program
                 // Try to copy all rows in batches
                 using (SqlBulkCopy bulkCopy = new SqlBulkCopy(connection))
                 {
-                    bulkCopy.DestinationTableName = tableName;
+                    bulkCopy.DestinationTableName = destinationTable;
                     bulkCopy.BatchSize = batchSize;
                     bulkCopy.BulkCopyTimeout = 300; // 5 minutes timeout
 
@@ -151,7 +158,7 @@ public class Program
                 Console.WriteLine("Switching to row-by-row processing with error handling...");
                 
                 // Process rows with error handling
-                var result = ProcessRowsWithErrorHandling(connection, tableName, dataTable, batchSize, sourceDatabase, errorDatabase, errorTable);
+                var result = ProcessRowsWithErrorHandling(connection, destinationTable, dataTable, batchSize, destinationDatabase, errorDatabase, errorTable);
                 successCount = result.SuccessCount;
                 failedCount = result.FailedCount;
             }
@@ -160,7 +167,7 @@ public class Program
         return (successCount, failedCount);
     }
 
-    static (int SuccessCount, int FailedCount) ProcessRowsWithErrorHandling(SqlConnection connection, string tableName, DataTable sourceTable, int batchSize, string sourceDatabase, string? errorDatabase, string? errorTable)
+    static (int SuccessCount, int FailedCount) ProcessRowsWithErrorHandling(SqlConnection connection, string destinationTable, DataTable sourceTable, int batchSize, string destinationDatabase, string? errorDatabase, string? errorTable)
     {
         int successCount = 0;
         int failedCount = 0;
@@ -186,7 +193,7 @@ public class Program
                 // Try to insert the batch
                 using (SqlBulkCopy bulkCopy = new SqlBulkCopy(connection))
                 {
-                    bulkCopy.DestinationTableName = tableName;
+                    bulkCopy.DestinationTableName = destinationTable;
                     bulkCopy.BatchSize = batchSize;
                     bulkCopy.BulkCopyTimeout = 300;
 
@@ -216,7 +223,7 @@ public class Program
                     {
                         using (SqlBulkCopy bulkCopy = new SqlBulkCopy(connection))
                         {
-                            bulkCopy.DestinationTableName = tableName;
+                            bulkCopy.DestinationTableName = destinationTable;
                             bulkCopy.BatchSize = 1;
                             bulkCopy.BulkCopyTimeout = 300;
 
@@ -235,7 +242,7 @@ public class Program
                         if (errorDatabase != null && errorTable != null)
                         {
                             string csvRowData = ConvertRowToCsv(sourceTable.Rows[batchStartRow + i]);
-                            LogErrorToTable(connection, errorDatabase, errorTable, sourceDatabase, tableName, rowNumber, csvHeaders, csvRowData, rowEx.Message);
+                            LogErrorToTable(connection, errorDatabase, errorTable, destinationDatabase, destinationTable, rowNumber, csvHeaders, csvRowData, rowEx.Message);
                         }
                     }
                 }

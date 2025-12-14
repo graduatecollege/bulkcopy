@@ -2,6 +2,8 @@ using System.Data;
 using Microsoft.Data.SqlClient;
 using Testcontainers.MsSql;
 using Xunit;
+using static System.Runtime.InteropServices.OSPlatform;
+using static System.Runtime.InteropServices.RuntimeInformation;
 
 namespace BulkCopy.IntegrationTests;
 
@@ -18,12 +20,14 @@ public class BulkCopyIntegrationTests : IAsyncLifetime
     {
         _sqlContainer = new MsSqlBuilder()
             .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
+            .WithCleanUp(false)
             .Build();
     }
 
     public async Task InitializeAsync()
     {
         await _sqlContainer.StartAsync();
+        Console.WriteLine(_sqlContainer.GetConnectionString());
         await CreateTestDatabaseAndTable();
         await CreateErrorDatabase();
         CreateTestCsvFile();
@@ -212,18 +216,18 @@ public class BulkCopyIntegrationTests : IAsyncLifetime
         var projectDir = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", "BulkCopy");
         
         // Determine runtime identifier based on current platform
-        var rid = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)
+        var rid = IsOSPlatform(Windows)
             ? "win-x64"
-            : System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX)
+            : IsOSPlatform(OSX)
                 ? "osx-x64"
                 : "linux-x64";
         
-        var bulkCopyPath = Path.Combine(projectDir, "bin", "Release", "net10.0", rid, "BulkCopy");
+        var bulkCopyPath = Path.Combine(projectDir, "bin", "Release", "net10.0", rid, IsOSPlatform(Windows) ? "BulkCopy.exe" : "BulkCopy");
         if (!File.Exists(bulkCopyPath))
         {
             // Fallback: try without RID-specific folder
             bulkCopyPath = Path.Combine(projectDir, "bin", "Release", "net10.0", "BulkCopy");
-            if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+            if (IsOSPlatform(Windows))
             {
                 bulkCopyPath += ".exe";
             }
