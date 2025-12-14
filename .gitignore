@@ -76,3 +76,7 @@ artifacts/
 
 # Build artifacts
 publish/
+
+# Misc
+*.csv
+*.csv.gz

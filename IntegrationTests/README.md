@@ -25,37 +25,57 @@ The integration test script (`run-integration-test.sh`) performs the following:
    - NVARCHAR (Name, Description, IsActive, BirthDate, CreatedAt, Score, Code)
    - DECIMAL (Salary) - Tests decimal type conversion
 
-3. **Generates test CSV** - Creates a CSV file with 20 rows:
-   - **Good rows**: 17 rows with valid data
-   - **Bad rows**: 3 rows with invalid data (rows 6, 11, 16)
+3. **Creates error logging database** - Creates a separate database for error logging
+
+4. **Generates test CSV** - Creates a CSV file with 25 rows:
+   - **Good rows**: 20 rows with valid data
+   - **Bad rows**: 5 rows with invalid data (rows 6, 11, 16, 23, 24)
      - Row 6: Invalid age ("BadAge")
      - Row 11: Invalid age ("InvalidAge")
      - Row 16: Multiple errors (invalid age, salary, and score)
+     - Row 23: Invalid birth date
+     - Row 24: Code too long for column
 
-4. **Runs BulkCopy** - Executes the BulkCopy application with batch size of 10
+5. **Runs BulkCopy with error logging** - Executes the BulkCopy application with:
+   - Batch size of 10
+   - Error logging enabled (`--error-database` and `--error-table` parameters)
 
-5. **Verifies results**:
-   - Confirms exactly 17 valid rows were inserted
-   - Verifies bad rows (6, 11, 16) were skipped
+6. **Verifies data import results**:
+   - Confirms exactly 20 valid rows were inserted
+   - Verifies bad rows (6, 11, 16, 23, 24) were skipped
    - Confirms sample good rows (1, 5, 10, 15, 20) were inserted
    - Displays sample data from the table
 
+7. **Verifies error logging functionality**:
+   - Confirms error table was automatically created
+   - Verifies exactly 5 errors were logged
+   - Checks error table schema has all required columns:
+     - Id, SourceDatabase, SourceTable, RowNumber
+     - CsvHeaders, CsvRowData, ErrorMessage, ErrorTimestamp
+   - Verifies error logs contain correct source database and table
+   - Confirms error row numbers are correct (6, 11, 16, 23, 24)
+   - Validates CSV headers and row data are present in error logs
+   - Ensures error messages are captured
+
 ## Expected Output
 
-The test demonstrates the error handling behavior:
+The test demonstrates the error handling and logging behavior:
 - Batches with only good data are processed quickly in bulk
 - Batches containing bad rows fall back to row-by-row processing
-- Bad rows are logged with specific row numbers and error details
+- Bad rows are logged with specific row numbers and error details to console
+- **Error rows are also written to the error table with full details**
 - Processing continues after skipping bad rows
-- Final summary shows: "Successfully imported 17 rows, failed 3 rows."
+- Final summary shows: "Successfully imported 20 rows, failed 5 rows."
+- Error logging verification confirms all 5 errors were captured with complete information
 
 ## Test Data Layout
 
 With batch size 10:
 - **Batch 1** (rows 1-10): Contains 1 bad row (row 6)
 - **Batch 2** (rows 11-20): Contains 2 bad rows (rows 11, 16)
+- **Batch 3** (rows 21-25): Contains 2 bad rows (rows 23, 24)
 
-This tests the error handling across multiple batches.
+This tests the error handling and logging across multiple batches.
 
 ## Cleanup
 

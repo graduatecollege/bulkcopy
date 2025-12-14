@@ -16,6 +16,8 @@ CONTAINER_NAME="bulkcopy-test-sqlserver"
 SA_PASSWORD="YourStrong!Passw0rd"
 DB_NAME="TestDB"
 TABLE_NAME="TestTable"
+ERROR_DB_NAME="ErrorLogDB"
+ERROR_TABLE_NAME="BulkCopyErrors"
 CSV_FILE="test_data.csv"
 WAIT_TIME=30
 
@@ -88,6 +90,14 @@ docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
 
 echo -e "${GREEN}✓ Database and table created${NC}"
 
+# Create error logging database
+echo -e "${YELLOW}Creating error logging database...${NC}"
+docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
+    -S localhost -U sa -P "$SA_PASSWORD" -C \
+    -Q "CREATE DATABASE $ERROR_DB_NAME;"
+
+echo -e "${GREEN}✓ Error logging database created${NC}"
+
 # Create CSV file with good batches and bad rows
 echo -e "${YELLOW}Creating test CSV file...${NC}"
 cat > $CSV_FILE << 'EOF'
@@ -128,15 +138,17 @@ dotnet build -c Release > /dev/null 2>&1
 cd ../IntegrationTests
 echo -e "${GREEN}✓ Application built${NC}"
 
-# Run BulkCopy with the test data
-echo -e "${YELLOW}Running BulkCopy...${NC}"
+# Run BulkCopy with the test data and error logging enabled
+echo -e "${YELLOW}Running BulkCopy with error logging...${NC}"
 CONNECTION_STRING="Server=localhost,1433;Database=$DB_NAME;User Id=sa;Password=$SA_PASSWORD;TrustServerCertificate=True;"
 
 ../BulkCopy/bin/Release/net10.0/linux-x64/BulkCopy \
     $CSV_FILE \
     "$CONNECTION_STRING" \
     $TABLE_NAME \
-    10
+    10 \
+    --error-database $ERROR_DB_NAME \
+    --error-table $ERROR_TABLE_NAME
 
 # Query the database to verify results
 echo -e "\n${YELLOW}Verifying results...${NC}"
@@ -204,8 +216,130 @@ else
     exit 1
 fi
 
+# Verify error logging functionality
+echo -e "\n${YELLOW}========================================${NC}"
+echo -e "${YELLOW}Verifying Error Logging Functionality${NC}"
+echo -e "${YELLOW}========================================${NC}"
+
+# Check that error table was created
+echo -e "${YELLOW}Checking if error table exists...${NC}"
+ERROR_TABLE_EXISTS=$(docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
+    -S localhost -U sa -P "$SA_PASSWORD" -d $ERROR_DB_NAME -C \
+    -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.tables WHERE name = '$ERROR_TABLE_NAME';" -h -1 | tr -d '[:space:]')
+
+if [ "$ERROR_TABLE_EXISTS" -eq "1" ]; then
+    echo -e "${GREEN}✓ Error table exists${NC}"
+else
+    echo -e "${RED}✗ Error table was not created${NC}"
+    exit 1
+fi
+
+# Count errors in error table
+ERROR_COUNT=$(docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
+    -S localhost -U sa -P "$SA_PASSWORD" -d $ERROR_DB_NAME -C \
+    -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM $ERROR_TABLE_NAME;" -h -1 | tr -d '[:space:]')
+
+EXPECTED_ERROR_COUNT=5  # Bad rows: 6, 11, 16, 23, 24
+
+echo -e "${YELLOW}Expected errors logged: $EXPECTED_ERROR_COUNT${NC}"
+echo -e "${YELLOW}Actual errors logged: $ERROR_COUNT${NC}"
+
+if [ "$ERROR_COUNT" -eq "$EXPECTED_ERROR_COUNT" ]; then
+    echo -e "${GREEN}✓ Correct number of errors logged${NC}"
+else
+    echo -e "${RED}✗ Expected $EXPECTED_ERROR_COUNT errors but got $ERROR_COUNT${NC}"
+    exit 1
+fi
+
+# Display sample errors from error table
+echo -e "\n${YELLOW}Sample errors from error log table:${NC}"
+docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
+    -S localhost -U sa -P "$SA_PASSWORD" -d $ERROR_DB_NAME -C \
+    -Q "SELECT TOP 3 RowNumber, SourceDatabase, SourceTable, LEFT(ErrorMessage, 50) as ErrorMessage FROM $ERROR_TABLE_NAME ORDER BY RowNumber;"
+
+# Verify error table schema has required columns
+echo -e "\n${YELLOW}Verifying error table schema...${NC}"
+REQUIRED_COLUMNS="Id,SourceDatabase,SourceTable,RowNumber,CsvHeaders,CsvRowData,ErrorMessage,ErrorTimestamp"
+COLUMN_CHECK=$(docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
+    -S localhost -U sa -P "$SA_PASSWORD" -d $ERROR_DB_NAME -C \
+    -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('$ERROR_TABLE_NAME') AND name IN ('Id','SourceDatabase','SourceTable','RowNumber','CsvHeaders','CsvRowData','ErrorMessage','ErrorTimestamp');" -h -1 | tr -d '[:space:]')
+
+if [ "$COLUMN_CHECK" -eq "8" ]; then
+    echo -e "${GREEN}✓ Error table has all required columns${NC}"
+else
+    echo -e "${RED}✗ Error table is missing required columns (found $COLUMN_CHECK of 8)${NC}"
+    exit 1
+fi
+
+# Verify that error logs contain the correct source information
+echo -e "\n${YELLOW}Verifying error log contents...${NC}"
+SOURCE_DB_CHECK=$(docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
+    -S localhost -U sa -P "$SA_PASSWORD" -d $ERROR_DB_NAME -C \
+    -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM $ERROR_TABLE_NAME WHERE SourceDatabase = '$DB_NAME' AND SourceTable = '$TABLE_NAME';" -h -1 | tr -d '[:space:]')
+
+if [ "$SOURCE_DB_CHECK" -eq "$EXPECTED_ERROR_COUNT" ]; then
+    echo -e "${GREEN}✓ Error logs have correct source database and table${NC}"
+else
+    echo -e "${RED}✗ Error logs have incorrect source information${NC}"
+    exit 1
+fi
+
+# Verify row numbers are correct (6, 11, 16, 23, 24)
+echo -e "\n${YELLOW}Verifying logged error row numbers...${NC}"
+ROW_NUMBERS=$(docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
+    -S localhost -U sa -P "$SA_PASSWORD" -d $ERROR_DB_NAME -C \
+    -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM $ERROR_TABLE_NAME WHERE RowNumber IN (6, 11, 16, 23, 24);" -h -1 | tr -d '[:space:]')
+
+if [ "$ROW_NUMBERS" -eq "$EXPECTED_ERROR_COUNT" ]; then
+    echo -e "${GREEN}✓ Error logs contain correct row numbers (6, 11, 16, 23, 24)${NC}"
+else
+    echo -e "${RED}✗ Error logs have incorrect row numbers${NC}"
+    exit 1
+fi
+
+# Verify CSV headers are present in error logs
+echo -e "\n${YELLOW}Verifying CSV headers in error logs...${NC}"
+HEADERS_CHECK=$(docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
+    -S localhost -U sa -P "$SA_PASSWORD" -d $ERROR_DB_NAME -C \
+    -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM $ERROR_TABLE_NAME WHERE CsvHeaders LIKE '%ID,Name,Age%';" -h -1 | tr -d '[:space:]')
+
+if [ "$HEADERS_CHECK" -eq "$EXPECTED_ERROR_COUNT" ]; then
+    echo -e "${GREEN}✓ Error logs contain CSV headers${NC}"
+else
+    echo -e "${RED}✗ Error logs missing CSV headers${NC}"
+    exit 1
+fi
+
+# Verify CSV row data is present
+echo -e "\n${YELLOW}Verifying CSV row data in error logs...${NC}"
+ROW_DATA_CHECK=$(docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
+    -S localhost -U sa -P "$SA_PASSWORD" -d $ERROR_DB_NAME -C \
+    -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM $ERROR_TABLE_NAME WHERE LEN(CsvRowData) > 10;" -h -1 | tr -d '[:space:]')
+
+if [ "$ROW_DATA_CHECK" -eq "$EXPECTED_ERROR_COUNT" ]; then
+    echo -e "${GREEN}✓ Error logs contain CSV row data${NC}"
+else
+    echo -e "${RED}✗ Error logs missing CSV row data${NC}"
+    exit 1
+fi
+
+# Verify error messages are present
+echo -e "\n${YELLOW}Verifying error messages in error logs...${NC}"
+ERROR_MSG_CHECK=$(docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
+    -S localhost -U sa -P "$SA_PASSWORD" -d $ERROR_DB_NAME -C \
+    -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM $ERROR_TABLE_NAME WHERE LEN(ErrorMessage) > 10;" -h -1 | tr -d '[:space:]')
+
+if [ "$ERROR_MSG_CHECK" -eq "$EXPECTED_ERROR_COUNT" ]; then
+    echo -e "${GREEN}✓ Error logs contain error messages${NC}"
+else
+    echo -e "${RED}✗ Error logs missing error messages${NC}"
+    exit 1
+fi
+
 echo -e "\n${GREEN}========================================${NC}"
 echo -e "${GREEN}✓ ALL INTEGRATION TESTS PASSED!${NC}"
+echo -e "${GREEN}  - Data import: $EXPECTED_COUNT rows${NC}"
+echo -e "${GREEN}  - Error logging: $EXPECTED_ERROR_COUNT errors${NC}"
 echo -e "${GREEN}========================================${NC}"
 
 exit 0

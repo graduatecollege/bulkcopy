@@ -97,4 +97,147 @@ public class ProgramTests
         Assert.Equal("1", batch.Rows[1]["ID"]);
         Assert.Equal("2", batch.Rows[2]["ID"]);
     }
+    
+    [Fact]
+    public void ConvertRowToCsv_SimpleData_ReturnsCorrectCsv()
+    {
+        // Arrange
+        DataTable table = new DataTable();
+        table.Columns.Add("ID", typeof(string));
+        table.Columns.Add("Name", typeof(string));
+        table.Columns.Add("Age", typeof(string));
+        table.Rows.Add("1", "John Doe", "30");
+        
+        // Act
+        string csv = Program.ConvertRowToCsv(table.Rows[0]);
+        
+        // Assert
+        Assert.Equal("1,John Doe,30", csv);
+    }
+    
+    [Fact]
+    public void ConvertRowToCsv_DataWithComma_QuotesValue()
+    {
+        // Arrange
+        DataTable table = new DataTable();
+        table.Columns.Add("ID", typeof(string));
+        table.Columns.Add("Name", typeof(string));
+        table.Rows.Add("1", "Doe, John");
+        
+        // Act
+        string csv = Program.ConvertRowToCsv(table.Rows[0]);
+        
+        // Assert
+        Assert.Equal("1,\"Doe, John\"", csv);
+    }
+    
+    [Fact]
+    public void ConvertRowToCsv_DataWithQuotes_EscapesQuotes()
+    {
+        // Arrange
+        DataTable table = new DataTable();
+        table.Columns.Add("ID", typeof(string));
+        table.Columns.Add("Description", typeof(string));
+        table.Rows.Add("1", "He said \"Hello\"");
+        
+        // Act
+        string csv = Program.ConvertRowToCsv(table.Rows[0]);
+        
+        // Assert
+        Assert.Equal("1,\"He said \"\"Hello\"\"\"", csv);
+    }
+    
+    [Fact]
+    public void ConvertRowToCsv_DataWithNewline_QuotesValue()
+    {
+        // Arrange
+        DataTable table = new DataTable();
+        table.Columns.Add("ID", typeof(string));
+        table.Columns.Add("Description", typeof(string));
+        table.Rows.Add("1", "Line1\nLine2");
+        
+        // Act
+        string csv = Program.ConvertRowToCsv(table.Rows[0]);
+        
+        // Assert
+        Assert.Equal("1,\"Line1\nLine2\"", csv);
+    }
+    
+    [Fact]
+    public void ConvertRowToCsv_NullValue_HandlesGracefully()
+    {
+        // Arrange
+        DataTable table = new DataTable();
+        table.Columns.Add("ID", typeof(string));
+        table.Columns.Add("Name", typeof(string));
+        table.Rows.Add("1", DBNull.Value);
+        
+        // Act
+        string csv = Program.ConvertRowToCsv(table.Rows[0]);
+        
+        // Assert
+        Assert.Equal("1,", csv);
+    }
+    
+    [Fact]
+    public void SanitizeSqlIdentifier_ValidIdentifier_ReturnsUnchanged()
+    {
+        // Act
+        string result = Program.SanitizeSqlIdentifier("MyDatabase");
+        
+        // Assert
+        Assert.Equal("MyDatabase", result);
+    }
+    
+    [Fact]
+    public void SanitizeSqlIdentifier_ValidIdentifierWithUnderscore_ReturnsUnchanged()
+    {
+        // Act
+        string result = Program.SanitizeSqlIdentifier("My_Database_123");
+        
+        // Assert
+        Assert.Equal("My_Database_123", result);
+    }
+    
+    [Fact]
+    public void SanitizeSqlIdentifier_IdentifierWithBrackets_RemovesBrackets()
+    {
+        // Act
+        string result = Program.SanitizeSqlIdentifier("[MyDatabase]");
+        
+        // Assert
+        Assert.Equal("MyDatabase", result);
+    }
+    
+    [Fact]
+    public void SanitizeSqlIdentifier_SqlInjectionAttempt_ThrowsException()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => 
+            Program.SanitizeSqlIdentifier("mydb]; DROP TABLE users; --"));
+    }
+    
+    [Fact]
+    public void SanitizeSqlIdentifier_EmptyString_ThrowsException()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => 
+            Program.SanitizeSqlIdentifier(""));
+    }
+    
+    [Fact]
+    public void SanitizeSqlIdentifier_IdentifierWithSpaces_ThrowsException()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => 
+            Program.SanitizeSqlIdentifier("My Database"));
+    }
+    
+    [Fact]
+    public void SanitizeSqlIdentifier_IdentifierStartingWithNumber_ThrowsException()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => 
+            Program.SanitizeSqlIdentifier("123Database"));
+    }
 }
