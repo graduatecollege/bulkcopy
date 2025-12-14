@@ -86,7 +86,7 @@ public class Program
             {
                 Console.WriteLine($"Error logging enabled: {errorDatabase}.{errorTable}");
             }
-            if (nullChar != "\0")
+            if (nullChar != null && nullChar != "\0")
             {
                 Console.WriteLine($"Using custom null character: {(nullChar.Length == 0 ? "(empty string)" : nullChar)}");
             }
