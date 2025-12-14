@@ -324,4 +324,135 @@ public class CsvParserTests
         // Assert
         Assert.Equal("field1,\"field2 with \"\"quotes\"\"\",field3", row);
     }
+
+    [Fact]
+    public void ExtractField_DefaultNullCharacter_ReturnsNull()
+    {
+        // Arrange
+        string line = "\0";
+
+        // Act
+        string? result = CsvParser.ExtractField(line, 0, line.Length, "\0");
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void ExtractField_CustomNullCharacter_ReturnsNull()
+    {
+        // Arrange
+        string line = "NULL";
+
+        // Act
+        string? result = CsvParser.ExtractField(line, 0, line.Length, "NULL");
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void ExtractField_QuotedNullCharacter_ReturnsValue()
+    {
+        // Arrange
+        string line = "\"NULL\"";
+
+        // Act
+        string? result = CsvParser.ExtractField(line, 0, line.Length, "NULL");
+
+        // Assert
+        Assert.Equal("NULL", result);
+    }
+
+    [Fact]
+    public void ParseCsvLine_WithNullCharacter_ReturnsNullForMatchingFields()
+    {
+        // Arrange
+        string line = "Value1,NULL,Value3";
+
+        // Act
+        string?[] fields = CsvParser.ParseCsvLine(line, "NULL");
+
+        // Assert
+        Assert.Equal(3, fields.Length);
+        Assert.Equal("Value1", fields[0]);
+        Assert.Null(fields[1]);
+        Assert.Equal("Value3", fields[2]);
+    }
+
+    [Fact]
+    public void ParseCsvLine_WithQuotedNullCharacter_ReturnsValue()
+    {
+        // Arrange
+        string line = "Value1,\"NULL\",Value3";
+
+        // Act
+        string?[] fields = CsvParser.ParseCsvLine(line, "NULL");
+
+        // Assert
+        Assert.Equal(3, fields.Length);
+        Assert.Equal("Value1", fields[0]);
+        Assert.Equal("NULL", fields[1]);
+        Assert.Equal("Value3", fields[2]);
+    }
+
+    [Fact]
+    public void LoadCsvFromStream_WithNullCharacter_LoadsAsDBNull()
+    {
+        // Arrange
+        string csvContent = "Name,Age,Email\nJohn Doe,NULL,john@example.com\nJane Smith,25,NULL";
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
+        using var reader = new StreamReader(stream);
+
+        // Act
+        DataTable result = CsvParser.LoadCsvFromStream(reader, "NULL");
+
+        // Assert
+        Assert.Equal(3, result.Columns.Count);
+        Assert.Equal(2, result.Rows.Count);
+        Assert.Equal("John Doe", result.Rows[0]["Name"]);
+        Assert.Equal(DBNull.Value, result.Rows[0]["Age"]);
+        Assert.Equal("john@example.com", result.Rows[0]["Email"]);
+        Assert.Equal("Jane Smith", result.Rows[1]["Name"]);
+        Assert.Equal("25", result.Rows[1]["Age"]);
+        Assert.Equal(DBNull.Value, result.Rows[1]["Email"]);
+    }
+
+    [Fact]
+    public void LoadCsvFromStream_WithDefaultNullCharacter_LoadsAsDBNull()
+    {
+        // Arrange
+        string csvContent = "Name,Age,Email\nJohn Doe,\0,john@example.com\nJane Smith,25,\0";
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
+        using var reader = new StreamReader(stream);
+
+        // Act
+        DataTable result = CsvParser.LoadCsvFromStream(reader);
+
+        // Assert
+        Assert.Equal(3, result.Columns.Count);
+        Assert.Equal(2, result.Rows.Count);
+        Assert.Equal("John Doe", result.Rows[0]["Name"]);
+        Assert.Equal(DBNull.Value, result.Rows[0]["Age"]);
+        Assert.Equal("john@example.com", result.Rows[0]["Email"]);
+        Assert.Equal("Jane Smith", result.Rows[1]["Name"]);
+        Assert.Equal("25", result.Rows[1]["Age"]);
+        Assert.Equal(DBNull.Value, result.Rows[1]["Email"]);
+    }
+
+    [Fact]
+    public void ParseCsvLine_WithNoNullChar_DoesNotConvertNulls()
+    {
+        // Arrange
+        string line = "Value1,NULL,Value3";
+
+        // Act - passing null as nullChar disables null conversion
+        string?[] fields = CsvParser.ParseCsvLine(line, null);
+
+        // Assert
+        Assert.Equal(3, fields.Length);
+        Assert.Equal("Value1", fields[0]);
+        Assert.Equal("NULL", fields[1]);
+        Assert.Equal("Value3", fields[2]);
+    }
 }

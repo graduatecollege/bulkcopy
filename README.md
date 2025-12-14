@@ -15,7 +15,7 @@ A .NET 10 console application that uses SqlBulkCopy to efficiently import CSV fi
 ## Usage
 
 ```bash
-BulkCopy <csv-file> <connection-string> <table-name> [batch-size] [--error-database <db>] [--error-table <table>]
+BulkCopy <csv-file> <connection-string> <table-name> [batch-size] [--error-database <db>] [--error-table <table>] [--null-char <char>]
 ```
 
 ### Parameters
@@ -25,6 +25,7 @@ BulkCopy <csv-file> <connection-string> <table-name> [batch-size] [--error-datab
 - `batch-size`: (Optional) Number of rows per batch (default: 1000)
 - `--error-database`: (Optional) Database name for error logging (uses same connection credentials)
 - `--error-table`: (Optional) Table name for error logging (default: BulkCopyErrors if --error-database is specified)
+- `--null-char`: (Optional) Character to treat as null when unquoted (default: `\0` null character)
 
 ### Example
 
@@ -38,12 +39,20 @@ BulkCopy <csv-file> <connection-string> <table-name> [batch-size] [--error-datab
 ./BulkCopy data.csv "Server=myserver;Database=mydb;User Id=myuser;Password=mypass;TrustServerCertificate=True;" MyTable 1000 --error-database ErrorsDB --error-table ImportErrors
 ```
 
+### Example with Custom Null Character
+
+```bash
+./BulkCopy data.csv "Server=myserver;Database=mydb;User Id=myuser;Password=mypass;TrustServerCertificate=True;" MyTable 1000 --null-char "NULL"
+```
+
 ## CSV Format
 - First row must contain column headers
 - Column headers should match the target table column names (or use ordinal position mapping)
 - Supports standard CSV format with comma delimiters
 - Supports quoted fields with embedded commas and newlines
 - Empty lines are skipped
+- Unquoted fields matching the null character (default: `\0`) are imported as SQL NULL values
+- To import the literal null character value, wrap it in quotes
 
 ## Building from Source
 
@@ -59,13 +68,14 @@ cd BulkCopy.Tests
 dotnet test
 ```
 
-All 34 unit tests cover:
+All 42 unit tests cover:
 - Simple and complex CSV parsing
 - Quoted fields with commas, newlines, and escaped quotes
 - Different line ending formats (Unix, Windows, Mac)
 - Edge cases like empty files and variable-length rows
 - CSV row conversion with proper escaping
 - SQL identifier validation and sanitization
+- Null character handling (default and custom)
 
 ### Publish as self-contained Linux binary
 ```bash

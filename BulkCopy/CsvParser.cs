@@ -5,15 +5,15 @@ namespace BulkCopy;
 
 public class CsvParser
 {
-    public static DataTable LoadCsvToDataTable(string filePath)
+    public static DataTable LoadCsvToDataTable(string filePath, string? nullChar = "\0")
     {
         using (StreamReader reader = new StreamReader(filePath))
         {
-            return LoadCsvFromStream(reader);
+            return LoadCsvFromStream(reader, nullChar);
         }
     }
 
-    public static DataTable LoadCsvFromStream(StreamReader reader)
+    public static DataTable LoadCsvFromStream(StreamReader reader, string? nullChar = "\0")
     {
         DataTable dataTable = new DataTable();
 
@@ -25,10 +25,10 @@ public class CsvParser
         }
 
         // Parse headers and create columns
-        string[] headers = ParseCsvLine(firstRow);
-        foreach (string header in headers)
+        string?[] headers = ParseCsvLine(firstRow, null);
+        foreach (string? header in headers)
         {
-            dataTable.Columns.Add(header.Trim());
+            dataTable.Columns.Add(header?.Trim() ?? "");
         }
 
         // Read data rows
@@ -38,7 +38,7 @@ public class CsvParser
             if (string.IsNullOrWhiteSpace(row))
                 continue;
 
-            string[] fields = ParseCsvLine(row);
+            string?[] fields = ParseCsvLine(row, nullChar);
             
             // Handle rows with fewer fields than headers
             if (fields.Length < headers.Length)
@@ -51,7 +51,13 @@ public class CsvParser
                 }
             }
 
-            dataTable.Rows.Add(fields);
+            // Convert string? fields to objects, handling DBNull for null values
+            object[] rowValues = new object[fields.Length];
+            for (int i = 0; i < fields.Length; i++)
+            {
+                rowValues[i] = fields[i] == null ? (object)DBNull.Value : (object)fields[i];
+            }
+            dataTable.Rows.Add(rowValues);
         }
 
         return dataTable;
@@ -113,9 +119,9 @@ public class CsvParser
         return row.Length > 0 ? row.ToString() : null;
     }
 
-    public static string[] ParseCsvLine(string line)
+    public static string?[] ParseCsvLine(string line, string? nullChar = "\0")
     {
-        List<string> fields = new List<string>();
+        List<string?> fields = new List<string?>();
         bool inQuotes = false;
         int fieldStart = 0;
 
@@ -127,27 +133,35 @@ public class CsvParser
             }
             else if (line[i] == ',' && !inQuotes)
             {
-                fields.Add(ExtractField(line, fieldStart, i));
+                fields.Add(ExtractField(line, fieldStart, i, nullChar));
                 fieldStart = i + 1;
             }
         }
 
         // Add the last field
-        fields.Add(ExtractField(line, fieldStart, line.Length));
+        fields.Add(ExtractField(line, fieldStart, line.Length, nullChar));
 
         return fields.ToArray();
     }
 
-    public static string ExtractField(string line, int start, int end)
+    public static string? ExtractField(string line, int start, int end, string? nullChar = "\0")
     {
         string field = line.Substring(start, end - start).Trim();
         
+        // Check if the field is quoted
+        bool isQuoted = field.StartsWith('"') && field.EndsWith('"') && field.Length >= 2;
+        
         // Remove surrounding quotes if present
-        if (field.StartsWith('"') && field.EndsWith('"') && field.Length >= 2)
+        if (isQuoted)
         {
             field = field.Substring(1, field.Length - 2);
             // Unescape doubled quotes
             field = field.Replace("\"\"", "\"");
+        }
+        // If not quoted and matches null character, return null
+        else if (nullChar != null && field == nullChar)
+        {
+            return null;
         }
 
         return field;

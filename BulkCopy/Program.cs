@@ -14,10 +14,11 @@ public class Program
     {
         if (args.Length < 3)
         {
-            Console.WriteLine("Usage: BulkCopy <csv-file> <connection-string> <table-name> [batch-size] [--error-database <db>] [--error-table <table>]");
+            Console.WriteLine("Usage: BulkCopy <csv-file> <connection-string> <table-name> [batch-size] [--error-database <db>] [--error-table <table>] [--null-char <char>]");
             Console.WriteLine("Example: BulkCopy data.csv \"Server=localhost;Database=mydb;User Id=sa;Password=pass;\" MyTable 1000");
             Console.WriteLine("  --error-database: Optional database name for error logging (uses same connection)");
             Console.WriteLine("  --error-table: Optional table name for error logging (default: BulkCopyErrors)");
+            Console.WriteLine("  --null-char: Optional character to treat as null when unquoted (default: \\0)");
             return 1;
         }
 
@@ -27,6 +28,7 @@ public class Program
         int batchSize = 1000;
         string? errorDatabase = null;
         string? errorTable = null;
+        string? nullChar = "\0";
         
         // Parse positional and optional arguments
         int currentArg = 3;
@@ -51,6 +53,11 @@ public class Program
             else if (args[currentArg] == "--error-table" && currentArg + 1 < args.Length)
             {
                 errorTable = args[currentArg + 1];
+                currentArg += 2;
+            }
+            else if (args[currentArg] == "--null-char" && currentArg + 1 < args.Length)
+            {
+                nullChar = args[currentArg + 1];
                 currentArg += 2;
             }
             else
@@ -79,9 +86,13 @@ public class Program
             {
                 Console.WriteLine($"Error logging enabled: {errorDatabase}.{errorTable}");
             }
+            if (nullChar != "\0")
+            {
+                Console.WriteLine($"Using custom null character: {(nullChar.Length == 0 ? "(empty string)" : nullChar)}");
+            }
             
             var csvLoadStopwatch = Stopwatch.StartNew();
-            DataTable dataTable = CsvParser.LoadCsvToDataTable(csvFilePath);
+            DataTable dataTable = CsvParser.LoadCsvToDataTable(csvFilePath, nullChar);
             csvLoadStopwatch.Stop();
             Console.WriteLine($"Loaded {dataTable.Rows.Count} rows from CSV file.");
             Console.WriteLine($"CSV loading took {csvLoadStopwatch.Elapsed.TotalSeconds:F2}s ({csvLoadStopwatch.ElapsedMilliseconds}ms).");
