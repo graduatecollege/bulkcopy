@@ -78,12 +78,12 @@ docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
         Name NVARCHAR(100),
         Age INT,
         Salary DECIMAL(10,2),
-        IsActive NVARCHAR(10),
-        BirthDate NVARCHAR(50),
-        CreatedAt NVARCHAR(50),
-        Score NVARCHAR(50),
+        IsActive NVARCHAR(1),
+        BirthDate datetime2,
+        CreatedAt datetime2,
+        Score decimal(4,2),
         Description NVARCHAR(MAX),
-        Code NVARCHAR(20)
+        Code NVARCHAR(7)
     );"
 
 echo -e "${GREEN}✓ Database and table created${NC}"
@@ -112,9 +112,14 @@ ID,Name,Age,Salary,IsActive,BirthDate,CreatedAt,Score,Description,Code
 18,Rachel Clark,34,83000.50,1,1989-03-14,2024-01-18 14:15:00,92.7,Valuable asset,EMPL018
 19,Sam Lewis,27,69000.00,1,1996-09-30,2024-01-19 10:05:00,87.5,Promising,EMPL019
 20,Tina Walker,31,77000.75,1,1992-06-18,2024-01-20 12:35:00,91.8,Dedicated,EMPL020
+21,Uma Young,29,70000.00,1,1996-02-10,2024-01-21 10:00:00,88.1,New hire,EMPL021
+22,Vincent King,33,81000.00,1,0204-09-15,2024-01-22 11:11:11,90.0,Ancient birthday,EMPL022
+23,Wendy Scott,41,91000.00,1,a,2024-01-23 12:12:12,93.3,Bad Date,EMPL023
+24,Xavier Adams,27,68000.00,1,1997-07-07,2024-01-24 13:13:13,85.5,Too long code,EMPL024LONG
+25,Yara Perez,26,62000.00,1,1998-02-02,2024-01-25 14:14:14,84.0,Recent grad,EMPL025
 EOF
 
-echo -e "${GREEN}✓ CSV file created with 20 rows (3 bad rows: 6, 11, 16)${NC}"
+echo -e "${GREEN}✓ CSV file created with 25 rows (5 bad rows: 6, 11, 16, 23, 24)${NC}"
 
 # Build the BulkCopy application
 echo -e "${YELLOW}Building BulkCopy application...${NC}"
@@ -139,7 +144,7 @@ ACTUAL_COUNT=$(docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
     -S localhost -U sa -P "$SA_PASSWORD" -d $DB_NAME -C \
     -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM $TABLE_NAME;" -h -1 | tr -d '[:space:]')
 
-EXPECTED_COUNT=17  # 20 total rows - 3 bad rows
+EXPECTED_COUNT=20  # 25 total rows - 5 bad rows
 
 echo -e "${YELLOW}Expected rows: $EXPECTED_COUNT${NC}"
 echo -e "${YELLOW}Actual rows inserted: $ACTUAL_COUNT${NC}"
@@ -171,8 +176,16 @@ BAD_ROW_16=$(docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
     -S localhost -U sa -P "$SA_PASSWORD" -d $DB_NAME -C \
     -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM $TABLE_NAME WHERE ID = 16;" -h -1 | tr -d '[:space:]')
 
-if [ "$BAD_ROW_6" -eq "0" ] && [ "$BAD_ROW_11" -eq "0" ] && [ "$BAD_ROW_16" -eq "0" ]; then
-    echo -e "${GREEN}✓ Bad rows (6, 11, 16) were correctly skipped${NC}"
+BAD_ROW_23=$(docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
+    -S localhost -U sa -P "$SA_PASSWORD" -d $DB_NAME -C \
+    -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM $TABLE_NAME WHERE ID = 23;" -h -1 | tr -d '[:space:]')
+
+BAD_ROW_24=$(docker exec $CONTAINER_NAME /opt/mssql-tools18/bin/sqlcmd \
+    -S localhost -U sa -P "$SA_PASSWORD" -d $DB_NAME -C \
+    -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM $TABLE_NAME WHERE ID = 24;" -h -1 | tr -d '[:space:]')
+
+if [ "$BAD_ROW_6" -eq "0" ] && [ "$BAD_ROW_11" -eq "0" ] && [ "$BAD_ROW_16" -eq "0" ] && [ "$BAD_ROW_23" -eq "0" ] && [ "$BAD_ROW_24" -eq "0" ]; then
+    echo -e "${GREEN}✓ Bad rows (6, 11, 16, 23, 24) were correctly skipped${NC}"
 else
     echo -e "${RED}✗ Some bad rows were incorrectly inserted${NC}"
     exit 1
