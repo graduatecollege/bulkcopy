@@ -250,10 +250,14 @@ public class Program
     
     static void EnsureErrorTableExists(SqlConnection connection, string errorDatabase, string errorTable)
     {
+        // Validate and sanitize SQL identifiers to prevent SQL injection
+        string sanitizedDatabase = SanitizeSqlIdentifier(errorDatabase);
+        string sanitizedTable = SanitizeSqlIdentifier(errorTable);
+        
         string createTableSql = $@"
-            IF NOT EXISTS (SELECT * FROM [{errorDatabase}].sys.tables WHERE name = '{errorTable}')
+            IF NOT EXISTS (SELECT * FROM [{sanitizedDatabase}].sys.tables WHERE name = @TableName)
             BEGIN
-                CREATE TABLE [{errorDatabase}].[dbo].[{errorTable}] (
+                CREATE TABLE [{sanitizedDatabase}].[dbo].[{sanitizedTable}] (
                     [Id] INT IDENTITY(1,1) PRIMARY KEY,
                     [SourceDatabase] NVARCHAR(128) NOT NULL,
                     [SourceTable] NVARCHAR(128) NOT NULL,
@@ -267,16 +271,21 @@ public class Program
         
         using (SqlCommand command = new SqlCommand(createTableSql, connection))
         {
+            command.Parameters.AddWithValue("@TableName", sanitizedTable);
             command.ExecuteNonQuery();
         }
         
-        Console.WriteLine($"Error table [{errorDatabase}].[dbo].[{errorTable}] is ready.");
+        Console.WriteLine($"Error table [{sanitizedDatabase}].[dbo].[{sanitizedTable}] is ready.");
     }
     
     static void LogErrorToTable(SqlConnection connection, string errorDatabase, string errorTable, string sourceDatabase, string sourceTable, int rowNumber, string csvHeaders, string csvRowData, string errorMessage)
     {
+        // Validate and sanitize SQL identifiers to prevent SQL injection
+        string sanitizedDatabase = SanitizeSqlIdentifier(errorDatabase);
+        string sanitizedTable = SanitizeSqlIdentifier(errorTable);
+        
         string insertSql = $@"
-            INSERT INTO [{errorDatabase}].[dbo].[{errorTable}] 
+            INSERT INTO [{sanitizedDatabase}].[dbo].[{sanitizedTable}] 
                 ([SourceDatabase], [SourceTable], [RowNumber], [CsvHeaders], [CsvRowData], [ErrorMessage], [ErrorTimestamp])
             VALUES 
                 (@SourceDatabase, @SourceTable, @RowNumber, @CsvHeaders, @CsvRowData, @ErrorMessage, GETDATE())";
@@ -294,7 +303,7 @@ public class Program
                 command.ExecuteNonQuery();
             }
             
-            Console.WriteLine($"  Logged error to {errorDatabase}.{errorTable}");
+            Console.WriteLine($"  Logged error to {sanitizedDatabase}.{sanitizedTable}");
         }
         catch (Exception ex)
         {
@@ -316,5 +325,26 @@ public class Program
             fields.Add(value);
         }
         return string.Join(",", fields);
+    }
+    
+    public static string SanitizeSqlIdentifier(string identifier)
+    {
+        // SQL identifiers can contain alphanumeric characters, underscores, and must start with a letter or underscore
+        // Remove any characters that are not allowed and escape any square brackets
+        if (string.IsNullOrWhiteSpace(identifier))
+        {
+            throw new ArgumentException("SQL identifier cannot be null or empty", nameof(identifier));
+        }
+        
+        // Remove any existing square brackets to prevent injection
+        string sanitized = identifier.Replace("[", "").Replace("]", "");
+        
+        // Validate that identifier contains only safe characters
+        if (!System.Text.RegularExpressions.Regex.IsMatch(sanitized, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
+        {
+            throw new ArgumentException($"Invalid SQL identifier: '{identifier}'. Identifiers must start with a letter or underscore and contain only alphanumeric characters and underscores.", nameof(identifier));
+        }
+        
+        return sanitized;
     }
 }

@@ -178,4 +178,66 @@ public class ProgramTests
         // Assert
         Assert.Equal("1,", csv);
     }
+    
+    [Fact]
+    public void SanitizeSqlIdentifier_ValidIdentifier_ReturnsUnchanged()
+    {
+        // Act
+        string result = Program.SanitizeSqlIdentifier("MyDatabase");
+        
+        // Assert
+        Assert.Equal("MyDatabase", result);
+    }
+    
+    [Fact]
+    public void SanitizeSqlIdentifier_ValidIdentifierWithUnderscore_ReturnsUnchanged()
+    {
+        // Act
+        string result = Program.SanitizeSqlIdentifier("My_Database_123");
+        
+        // Assert
+        Assert.Equal("My_Database_123", result);
+    }
+    
+    [Fact]
+    public void SanitizeSqlIdentifier_IdentifierWithBrackets_RemovesBrackets()
+    {
+        // Act
+        string result = Program.SanitizeSqlIdentifier("[MyDatabase]");
+        
+        // Assert
+        Assert.Equal("MyDatabase", result);
+    }
+    
+    [Fact]
+    public void SanitizeSqlIdentifier_SqlInjectionAttempt_ThrowsException()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => 
+            Program.SanitizeSqlIdentifier("mydb]; DROP TABLE users; --"));
+    }
+    
+    [Fact]
+    public void SanitizeSqlIdentifier_EmptyString_ThrowsException()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => 
+            Program.SanitizeSqlIdentifier(""));
+    }
+    
+    [Fact]
+    public void SanitizeSqlIdentifier_IdentifierWithSpaces_ThrowsException()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => 
+            Program.SanitizeSqlIdentifier("My Database"));
+    }
+    
+    [Fact]
+    public void SanitizeSqlIdentifier_IdentifierStartingWithNumber_ThrowsException()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => 
+            Program.SanitizeSqlIdentifier("123Database"));
+    }
 }
