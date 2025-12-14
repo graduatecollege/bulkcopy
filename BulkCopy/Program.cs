@@ -3,14 +3,16 @@ using Microsoft.Data.SqlClient;
 
 namespace BulkCopy;
 
-class Program
+public class Program
 {
     static int Main(string[] args)
     {
         if (args.Length < 3)
         {
-            Console.WriteLine("Usage: BulkCopy <csv-file> <connection-string> <table-name> [batch-size]");
+            Console.WriteLine("Usage: BulkCopy <csv-file> <connection-string> <table-name> [batch-size] [--error-database <db>] [--error-table <table>]");
             Console.WriteLine("Example: BulkCopy data.csv \"Server=localhost;Database=mydb;User Id=sa;Password=pass;\" MyTable 1000");
+            Console.WriteLine("  --error-database: Optional database name for error logging (uses same connection)");
+            Console.WriteLine("  --error-table: Optional table name for error logging (default: BulkCopyErrors)");
             return 1;
         }
 
@@ -18,14 +20,45 @@ class Program
         string connectionString = args[1];
         string tableName = args[2];
         int batchSize = 1000;
+        string? errorDatabase = null;
+        string? errorTable = null;
         
-        if (args.Length > 3)
+        // Parse positional and optional arguments
+        int currentArg = 3;
+        if (currentArg < args.Length && !args[currentArg].StartsWith("--"))
         {
-            if (!int.TryParse(args[3], out batchSize) || batchSize <= 0)
+            if (!int.TryParse(args[currentArg], out batchSize) || batchSize <= 0)
             {
                 Console.WriteLine("Error: Batch size must be a positive integer.");
                 return 1;
             }
+            currentArg++;
+        }
+        
+        // Parse optional named arguments
+        while (currentArg < args.Length)
+        {
+            if (args[currentArg] == "--error-database" && currentArg + 1 < args.Length)
+            {
+                errorDatabase = args[currentArg + 1];
+                currentArg += 2;
+            }
+            else if (args[currentArg] == "--error-table" && currentArg + 1 < args.Length)
+            {
+                errorTable = args[currentArg + 1];
+                currentArg += 2;
+            }
+            else
+            {
+                Console.WriteLine($"Error: Unknown argument '{args[currentArg]}'");
+                return 1;
+            }
+        }
+        
+        // Set default error table name if error database is specified
+        if (errorDatabase != null && errorTable == null)
+        {
+            errorTable = "BulkCopyErrors";
         }
 
         try
@@ -37,11 +70,15 @@ class Program
             }
 
             Console.WriteLine($"Starting bulk copy from {csvFilePath} to {tableName}...");
+            if (errorDatabase != null)
+            {
+                Console.WriteLine($"Error logging enabled: {errorDatabase}.{errorTable}");
+            }
             
             DataTable dataTable = CsvParser.LoadCsvToDataTable(csvFilePath);
             Console.WriteLine($"Loaded {dataTable.Rows.Count} rows from CSV file.");
 
-            var result = BulkCopyToSqlServer(connectionString, tableName, dataTable, batchSize);
+            var result = BulkCopyToSqlServer(connectionString, tableName, dataTable, batchSize, errorDatabase, errorTable);
             
             Console.WriteLine($"Import completed. Successfully imported {result.SuccessCount} rows, failed {result.FailedCount} rows.");
             return 0;
@@ -63,7 +100,7 @@ class Program
         }
     }
 
-    static (int SuccessCount, int FailedCount) BulkCopyToSqlServer(string connectionString, string tableName, DataTable dataTable, int batchSize)
+    static (int SuccessCount, int FailedCount) BulkCopyToSqlServer(string connectionString, string tableName, DataTable dataTable, int batchSize, string? errorDatabase, string? errorTable)
     {
         int successCount = 0;
         int failedCount = 0;
@@ -71,6 +108,15 @@ class Program
         using (SqlConnection connection = new SqlConnection(connectionString))
         {
             connection.Open();
+            
+            // Get source database from connection
+            string sourceDatabase = connection.Database;
+            
+            // Ensure error table exists if error logging is enabled
+            if (errorDatabase != null && errorTable != null)
+            {
+                EnsureErrorTableExists(connection, errorDatabase, errorTable);
+            }
 
             try
             {
@@ -101,7 +147,7 @@ class Program
                 Console.WriteLine("Switching to row-by-row processing with error handling...");
                 
                 // Process rows with error handling
-                var result = ProcessRowsWithErrorHandling(connection, tableName, dataTable, batchSize);
+                var result = ProcessRowsWithErrorHandling(connection, tableName, dataTable, batchSize, sourceDatabase, errorDatabase, errorTable);
                 successCount = result.SuccessCount;
                 failedCount = result.FailedCount;
             }
@@ -110,11 +156,14 @@ class Program
         return (successCount, failedCount);
     }
 
-    static (int SuccessCount, int FailedCount) ProcessRowsWithErrorHandling(SqlConnection connection, string tableName, DataTable sourceTable, int batchSize)
+    static (int SuccessCount, int FailedCount) ProcessRowsWithErrorHandling(SqlConnection connection, string tableName, DataTable sourceTable, int batchSize, string sourceDatabase, string? errorDatabase, string? errorTable)
     {
         int successCount = 0;
         int failedCount = 0;
         int currentRow = 0; // 0-based index for accessing sourceTable.Rows
+        
+        // Get CSV headers for error logging
+        string csvHeaders = string.Join(",", sourceTable.Columns.Cast<DataColumn>().Select(c => c.ColumnName));
         
         while (currentRow < sourceTable.Rows.Count)
         {
@@ -177,6 +226,13 @@ class Program
                     {
                         Console.WriteLine($"ERROR: Failed to import row {rowNumber}: {rowEx.Message}");
                         failedCount++;
+                        
+                        // Log error to error table if enabled
+                        if (errorDatabase != null && errorTable != null)
+                        {
+                            string csvRowData = ConvertRowToCsv(sourceTable.Rows[batchStartRow + i]);
+                            LogErrorToTable(connection, errorDatabase, errorTable, sourceDatabase, tableName, rowNumber, csvHeaders, csvRowData, rowEx.Message);
+                        }
                     }
                 }
                 
@@ -190,5 +246,75 @@ class Program
         }
         
         return (successCount, failedCount);
+    }
+    
+    static void EnsureErrorTableExists(SqlConnection connection, string errorDatabase, string errorTable)
+    {
+        string createTableSql = $@"
+            IF NOT EXISTS (SELECT * FROM [{errorDatabase}].sys.tables WHERE name = '{errorTable}')
+            BEGIN
+                CREATE TABLE [{errorDatabase}].[dbo].[{errorTable}] (
+                    [Id] INT IDENTITY(1,1) PRIMARY KEY,
+                    [SourceDatabase] NVARCHAR(128) NOT NULL,
+                    [SourceTable] NVARCHAR(128) NOT NULL,
+                    [RowNumber] INT NOT NULL,
+                    [CsvHeaders] NVARCHAR(MAX) NOT NULL,
+                    [CsvRowData] NVARCHAR(MAX) NOT NULL,
+                    [ErrorMessage] NVARCHAR(MAX) NOT NULL,
+                    [ErrorTimestamp] DATETIME2 NOT NULL DEFAULT GETDATE()
+                );
+            END";
+        
+        using (SqlCommand command = new SqlCommand(createTableSql, connection))
+        {
+            command.ExecuteNonQuery();
+        }
+        
+        Console.WriteLine($"Error table [{errorDatabase}].[dbo].[{errorTable}] is ready.");
+    }
+    
+    static void LogErrorToTable(SqlConnection connection, string errorDatabase, string errorTable, string sourceDatabase, string sourceTable, int rowNumber, string csvHeaders, string csvRowData, string errorMessage)
+    {
+        string insertSql = $@"
+            INSERT INTO [{errorDatabase}].[dbo].[{errorTable}] 
+                ([SourceDatabase], [SourceTable], [RowNumber], [CsvHeaders], [CsvRowData], [ErrorMessage], [ErrorTimestamp])
+            VALUES 
+                (@SourceDatabase, @SourceTable, @RowNumber, @CsvHeaders, @CsvRowData, @ErrorMessage, GETDATE())";
+        
+        try
+        {
+            using (SqlCommand command = new SqlCommand(insertSql, connection))
+            {
+                command.Parameters.AddWithValue("@SourceDatabase", sourceDatabase);
+                command.Parameters.AddWithValue("@SourceTable", sourceTable);
+                command.Parameters.AddWithValue("@RowNumber", rowNumber);
+                command.Parameters.AddWithValue("@CsvHeaders", csvHeaders);
+                command.Parameters.AddWithValue("@CsvRowData", csvRowData);
+                command.Parameters.AddWithValue("@ErrorMessage", errorMessage);
+                command.ExecuteNonQuery();
+            }
+            
+            Console.WriteLine($"  Logged error to {errorDatabase}.{errorTable}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  Warning: Failed to log error to table: {ex.Message}");
+        }
+    }
+    
+    public static string ConvertRowToCsv(DataRow row)
+    {
+        List<string> fields = new List<string>();
+        foreach (var item in row.ItemArray)
+        {
+            string value = item?.ToString() ?? "";
+            // Escape quotes and wrap in quotes if contains comma, quote, or newline
+            if (value.Contains(',') || value.Contains('"') || value.Contains('\n') || value.Contains('\r'))
+            {
+                value = "\"" + value.Replace("\"", "\"\"") + "\"";
+            }
+            fields.Add(value);
+        }
+        return string.Join(",", fields);
     }
 }
