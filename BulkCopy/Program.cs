@@ -5,6 +5,10 @@ namespace BulkCopy;
 
 public class Program
 {
+    private static readonly System.Text.RegularExpressions.Regex SqlIdentifierRegex = 
+        new System.Text.RegularExpressions.Regex(@"^[a-zA-Z_][a-zA-Z0-9_]*$", 
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+    
     static int Main(string[] args)
     {
         if (args.Length < 3)
@@ -340,7 +344,7 @@ public class Program
         string sanitized = identifier.Replace("[", "").Replace("]", "");
         
         // Validate that identifier contains only safe characters
-        if (!System.Text.RegularExpressions.Regex.IsMatch(sanitized, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
+        if (!SqlIdentifierRegex.IsMatch(sanitized))
         {
             throw new ArgumentException($"Invalid SQL identifier: '{identifier}'. Identifiers must start with a letter or underscore and contain only alphanumeric characters and underscores.", nameof(identifier));
         }
