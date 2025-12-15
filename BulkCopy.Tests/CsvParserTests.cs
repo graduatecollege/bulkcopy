@@ -13,7 +13,7 @@ public class CsvParserTests
         string line = "John Doe,30,john@example.com";
 
         // Act
-        string[] fields = CsvParser.ParseCsvLine(line);
+        string?[] fields = CsvParser.ParseCsvLine(line);
 
         // Assert
         Assert.Equal(3, fields.Length);
@@ -29,7 +29,7 @@ public class CsvParserTests
         string line = "Product A,\"Description with, comma\",10.99";
 
         // Act
-        string[] fields = CsvParser.ParseCsvLine(line);
+        string?[] fields = CsvParser.ParseCsvLine(line);
 
         // Assert
         Assert.Equal(3, fields.Length);
@@ -45,7 +45,7 @@ public class CsvParserTests
         string line = "Product A,\"Has \"\"escaped\"\" quotes\",10.99";
 
         // Act
-        string[] fields = CsvParser.ParseCsvLine(line);
+        string?[] fields = CsvParser.ParseCsvLine(line);
 
         // Assert
         Assert.Equal(3, fields.Length);
@@ -61,7 +61,7 @@ public class CsvParserTests
         string line = "Simple field";
 
         // Act
-        string result = CsvParser.ExtractField(line, 0, line.Length);
+        string? result = CsvParser.ExtractField(line, 0, line.Length);
 
         // Assert
         Assert.Equal("Simple field", result);
@@ -74,7 +74,7 @@ public class CsvParserTests
         string line = "\"Quoted field\"";
 
         // Act
-        string result = CsvParser.ExtractField(line, 0, line.Length);
+        string? result = CsvParser.ExtractField(line, 0, line.Length);
 
         // Assert
         Assert.Equal("Quoted field", result);
@@ -87,7 +87,7 @@ public class CsvParserTests
         string line = "\"Field with \"\"escaped\"\" quotes\"";
 
         // Act
-        string result = CsvParser.ExtractField(line, 0, line.Length);
+        string? result = CsvParser.ExtractField(line, 0, line.Length);
 
         // Assert
         Assert.Equal("Field with \"escaped\" quotes", result);
@@ -422,7 +422,7 @@ public class CsvParserTests
     public void LoadCsvFromStream_WithDefaultNullCharacter_LoadsAsDBNull()
     {
         // Arrange
-        string csvContent = "Name,Age,Email\nJohn Doe,\0,john@example.com\nJane Smith,25,\0";
+        string csvContent = "Name,Age,Email\nJohn Doe,␀,john@example.com\nJane Smith,25,␀";
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
         using var reader = new StreamReader(stream);
 
@@ -438,6 +438,28 @@ public class CsvParserTests
         Assert.Equal("Jane Smith", result.Rows[1]["Name"]);
         Assert.Equal("25", result.Rows[1]["Age"]);
         Assert.Equal(DBNull.Value, result.Rows[1]["Email"]);
+    }
+
+    [Fact]
+    public void LoadCsvFromStream_Utf8Fields_LoadsCorrectly()
+    {
+        // Arrange
+        string csvContent = "Name,City,Emoji\nJosé,São Paulo,😀\n李雷,北京,🚀";
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+
+        // Act
+        DataTable result = CsvParser.LoadCsvFromStream(reader);
+
+        // Assert
+        Assert.Equal(3, result.Columns.Count);
+        Assert.Equal(2, result.Rows.Count);
+        Assert.Equal("José", result.Rows[0]["Name"]);
+        Assert.Equal("São Paulo", result.Rows[0]["City"]);
+        Assert.Equal("😀", result.Rows[0]["Emoji"]);
+        Assert.Equal("李雷", result.Rows[1]["Name"]);
+        Assert.Equal("北京", result.Rows[1]["City"]);
+        Assert.Equal("🚀", result.Rows[1]["Emoji"]);
     }
 
     [Fact]

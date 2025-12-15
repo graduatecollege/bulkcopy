@@ -5,15 +5,15 @@ namespace BulkCopy;
 
 public class CsvParser
 {
-    public static DataTable LoadCsvToDataTable(string filePath, string? nullChar = "\0")
+    public static DataTable LoadCsvToDataTable(string filePath, string? nullChar = "␀")
     {
-        using (StreamReader reader = new StreamReader(filePath))
+        using (StreamReader reader = new StreamReader(filePath, Encoding.UTF8))
         {
             return LoadCsvFromStream(reader, nullChar);
         }
     }
 
-    public static DataTable LoadCsvFromStream(StreamReader reader, string? nullChar = "\0")
+    public static DataTable LoadCsvFromStream(StreamReader reader, string? nullChar = "␀")
     {
         DataTable dataTable = new DataTable();
 
@@ -25,7 +25,7 @@ public class CsvParser
         }
 
         // Parse headers and create columns
-        string?[] headers = ParseCsvLine(firstRow, null);
+        string?[] headers = ParseCsvLine(firstRow, nullChar);
         foreach (string? header in headers)
         {
             dataTable.Columns.Add(header?.Trim() ?? "");
@@ -55,7 +55,8 @@ public class CsvParser
             object[] rowValues = new object[fields.Length];
             for (int i = 0; i < fields.Length; i++)
             {
-                rowValues[i] = fields[i] == null ? (object)DBNull.Value : (object)fields[i];
+                var value = fields[i];
+                rowValues[i] = value == null ? DBNull.Value : value;
             }
             dataTable.Rows.Add(rowValues);
         }
@@ -119,7 +120,7 @@ public class CsvParser
         return row.Length > 0 ? row.ToString() : null;
     }
 
-    public static string?[] ParseCsvLine(string line, string? nullChar = "\0")
+    public static string?[] ParseCsvLine(string line, string? nullChar = "␀")
     {
         List<string?> fields = new List<string?>();
         bool inQuotes = false;
@@ -129,7 +130,14 @@ public class CsvParser
         {
             if (line[i] == '"')
             {
-                inQuotes = !inQuotes;
+                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    i++; // Escaped quote inside quoted field
+                }
+                else
+                {
+                    inQuotes = !inQuotes;
+                }
             }
             else if (line[i] == ',' && !inQuotes)
             {
@@ -144,7 +152,7 @@ public class CsvParser
         return fields.ToArray();
     }
 
-    public static string? ExtractField(string line, int start, int end, string? nullChar = "\0")
+    public static string? ExtractField(string line, int start, int end, string? nullChar = "␀")
     {
         string field = line.Substring(start, end - start).Trim();
         

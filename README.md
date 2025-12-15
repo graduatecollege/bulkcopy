@@ -25,7 +25,7 @@ BulkCopy <csv-file> <connection-string> <table-name> [batch-size] [--error-datab
 - `batch-size`: (Optional) Number of rows per batch (default: 1000)
 - `--error-database`: (Optional) Database name for error logging (uses same connection credentials)
 - `--error-table`: (Optional) Table name for error logging (default: BulkCopyErrors if --error-database is specified)
-- `--null-char`: (Optional) Character to treat as null when unquoted (default: `\0` null character)
+- `--null-char`: (Optional) Character to treat as null when unquoted (default: `␀` null UTF-8 character)
 
 ### Example
 
