@@ -1,6 +1,5 @@
 ﻿using System.Data;
 using System.Diagnostics;
-using System.Text;
 using Microsoft.Data.SqlClient;
 
 namespace BulkCopy;
@@ -96,19 +95,24 @@ public class Program
             }
 
             var csvLoadStopwatch = Stopwatch.StartNew();
-            DataTable dataTable = CsvParser.LoadCsvToDataTable(csvFilePath, nullChar);
+            var dataTable = CsvParser.LoadCsvToDataTable(csvFilePath, nullChar);
             csvLoadStopwatch.Stop();
             Console.WriteLine($"Loaded {dataTable.Rows.Count} rows from CSV file.");
             Console.WriteLine(
                 $"CSV loading took {csvLoadStopwatch.Elapsed.TotalSeconds:F2}s ({csvLoadStopwatch.ElapsedMilliseconds}ms).");
 
             var bulkCopyStopwatch = Stopwatch.StartNew();
-            var result = BulkCopyToSqlServer(connectionString, destinationTable, dataTable, batchSize, errorDatabase,
+            
+            var result = BulkCopyToSqlServer(connectionString,
+                destinationTable,
+                dataTable,
+                batchSize,
+                errorDatabase,
                 errorTable);
+            
             bulkCopyStopwatch.Stop();
             Console.WriteLine(
                 $"Bulk copy took {bulkCopyStopwatch.Elapsed.TotalSeconds:F2}s ({bulkCopyStopwatch.ElapsedMilliseconds}ms).");
-
             Console.WriteLine(
                 $"Import completed. Successfully imported {result.SuccessCount} rows, failed {result.FailedCount} rows.");
             return 0;
@@ -130,8 +134,13 @@ public class Program
         }
     }
 
-    static (int SuccessCount, int FailedCount) BulkCopyToSqlServer(string connectionString, string destinationTable,
-        DataTable dataTable, int batchSize, string? errorDatabase, string? errorTable)
+    static (int SuccessCount, int FailedCount) BulkCopyToSqlServer(string connectionString,
+        string destinationTable,
+        DataTable dataTable,
+        int batchSize,
+        string? errorDatabase,
+        string? errorTable
+    )
     {
         int successCount = 0;
         int failedCount = 0;
@@ -150,7 +159,7 @@ public class Program
             }
 
             // Try to copy all rows in batches
-            using (SqlBulkCopy bulkCopy = new SqlBulkCopy(connection))
+            using (var bulkCopy = new SqlBulkCopy(connection))
             {
                 bulkCopy.DestinationTableName = destinationTable;
                 bulkCopy.BatchSize = batchSize;
@@ -186,28 +195,29 @@ public class Program
     {
         int successCount = 0;
         int failedCount = 0;
-        int currentRow = 0; // 0-based index for accessing sourceTable.Rows
+        int currentRow = 0;
+
+        var sourceView = sourceTable.DefaultView;
 
         // Get CSV headers for error logging
         string csvHeaders = string.Join(",", sourceTable.Columns.Cast<DataColumn>().Select(c => c.ColumnName));
 
         while (currentRow < sourceTable.Rows.Count)
         {
-            // Create a batch DataTable
-            var batchTable = sourceTable.Clone();
-            int batchStartRow = currentRow; // 0-based index
+            int batchStartRow = currentRow;
             int rowsInBatch = Math.Min(batchSize, sourceTable.Rows.Count - currentRow);
 
-
+            // We have to copy the view into rows since SqlBulkCopy doesn't support views
+            var batchRows = new DataRow[rowsInBatch];
             for (int i = 0; i < rowsInBatch; i++)
             {
-                batchTable.ImportRow(sourceTable.Rows[currentRow + i]);
+                batchRows[i] = sourceView[batchStartRow + i].Row;
             }
 
             try
             {
                 // Try to insert the batch
-                using (SqlBulkCopy bulkCopy = new SqlBulkCopy(connection))
+                using (var bulkCopy = new SqlBulkCopy(connection))
                 {
                     bulkCopy.DestinationTableName = destinationTable;
                     bulkCopy.BatchSize = batchSize;
@@ -215,7 +225,7 @@ public class Program
 
                     ConfigureColumnMappings(bulkCopy, sourceTable.Columns.Count);
 
-                    bulkCopy.WriteToServer(batchTable);
+                    bulkCopy.WriteToServer(batchRows);
                     successCount += rowsInBatch;
                     // Use 1-based row numbers in user-facing messages
                     Console.WriteLine($"Batch succeeded: rows {batchStartRow + 1} to {batchStartRow + rowsInBatch}");
@@ -229,12 +239,10 @@ public class Program
                     $"Batch failed for rows {batchStartRow + 1} to {batchStartRow + rowsInBatch}: {batchEx.Message}");
                 Console.WriteLine("Processing batch rows individually...");
 
-                // Process this batch row by row
                 for (int i = 0; i < rowsInBatch; i++)
                 {
                     int rowNumber = batchStartRow + i + 1; // Convert to 1-based for user-facing messages
-                    DataTable singleRowTable = sourceTable.Clone();
-                    singleRowTable.ImportRow(sourceTable.Rows[batchStartRow + i]);
+                    var singleRow = sourceView[batchStartRow + i].Row;
 
                     try
                     {
@@ -246,7 +254,7 @@ public class Program
 
                             ConfigureColumnMappings(bulkCopy, sourceTable.Columns.Count);
 
-                            bulkCopy.WriteToServer(singleRowTable);
+                            bulkCopy.WriteToServer(new[] { singleRow });
                             successCount++;
                         }
                     }
@@ -255,18 +263,23 @@ public class Program
                         Console.WriteLine($"ERROR: Failed to import row {rowNumber}: {rowEx.Message}");
                         failedCount++;
 
-                        // Log error to error table if enabled
                         if (errorDatabase != null && errorTable != null)
                         {
                             string csvRowData = ConvertRowToCsv(sourceTable.Rows[batchStartRow + i]);
-                            LogErrorToTable(connection, errorDatabase, errorTable, destinationDatabase,
-                                destinationTable, rowNumber, csvHeaders, csvRowData, rowEx.Message);
+                            LogErrorToTable(connection,
+                                errorDatabase,
+                                errorTable,
+                                destinationDatabase,
+                                destinationTable,
+                                rowNumber,
+                                csvHeaders,
+                                csvRowData,
+                                rowEx.Message);
                         }
                     }
                 }
 
                 currentRow += rowsInBatch;
-                // Continue processing remaining rows (still using row-by-row error handling mode)
                 if (currentRow < sourceTable.Rows.Count)
                 {
                     Console.WriteLine($"Continuing from row {currentRow + 1}...");
@@ -279,7 +292,6 @@ public class Program
 
     static void EnsureErrorTableExists(SqlConnection connection, string errorDatabase, string errorTable)
     {
-        // Validate and sanitize SQL identifiers to prevent SQL injection
         string sanitizedDatabase = SanitizeSqlIdentifier(errorDatabase);
         string sanitizedTable = SanitizeSqlIdentifier(errorTable);
 
@@ -298,7 +310,7 @@ public class Program
                 );
             END";
 
-        using (SqlCommand command = new SqlCommand(createTableSql, connection))
+        using (var command = new SqlCommand(createTableSql, connection))
         {
             command.Parameters.AddWithValue("@TableName", sanitizedTable);
             command.ExecuteNonQuery();
@@ -307,9 +319,16 @@ public class Program
         Console.WriteLine($"Error table [{sanitizedDatabase}].[dbo].[{sanitizedTable}] is ready.");
     }
 
-    static void LogErrorToTable(SqlConnection connection, string errorDatabase, string errorTable,
-        string sourceDatabase, string sourceTable, int rowNumber, string csvHeaders, string csvRowData,
-        string errorMessage)
+    static void LogErrorToTable(SqlConnection connection,
+        string errorDatabase,
+        string errorTable,
+        string sourceDatabase,
+        string sourceTable,
+        int rowNumber,
+        string csvHeaders,
+        string csvRowData,
+        string errorMessage
+    )
     {
         // Validate and sanitize SQL identifiers to prevent SQL injection
         string sanitizedDatabase = SanitizeSqlIdentifier(errorDatabase);
@@ -323,7 +342,7 @@ public class Program
 
         try
         {
-            using (SqlCommand command = new SqlCommand(insertSql, connection))
+            using (var command = new SqlCommand(insertSql, connection))
             {
                 command.Parameters.AddWithValue("@SourceDatabase", sourceDatabase);
                 command.Parameters.AddWithValue("@SourceTable", sourceTable);

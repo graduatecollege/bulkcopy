@@ -32,8 +32,7 @@ public class CsvParser
         }
 
         // Read data rows
-        string? row;
-        while ((row = ReadCsvRow(reader)) != null)
+        while (ReadCsvRow(reader) is { } row)
         {
             if (string.IsNullOrWhiteSpace(row))
                 continue;

@@ -100,32 +100,35 @@ public sealed class BulkCopyIntegrationTestFixture : IAsyncLifetime
 
     private static void CreateTestCsvFile()
     {
-        var csvContent = @"ID,Name,Age,Salary,IsActive,BirthDate,CreatedAt,Score,Description,Code
-1,Alice Johnson,30,75000.50,1,1993-05-15,2024-01-01 10:00:00,95.5,Excellent employee,EMPL001
-2,Bob Smith,25,65000.00,1,1998-08-22,2024-01-02 11:30:00,88.3,Good performer,EMPL002
-3,Carol White,35,85000.75,1,1988-12-10,2024-01-03 09:15:00,92.1,Senior staff,EMPL003
-4,David Brown,28,70000.00,1,1995-03-18,2024-01-04 14:20:00,89.7,Team player,EMPL004
-5,Eve Davis,32,78000.25,1,1991-07-25,2024-01-05 08:45:00,91.2,Reliable worker,EMPL005
-6,Frank Miller,BadAge,68000.00,1,1996-11-30,2024-01-06 13:10:00,85.9,Age is invalid,EMPL006
-7,Grace Lee,27,72000.50,1,1996-09-14,2024-01-07 10:30:00,90.4,High potential,EMPL007
-8,Henry Wilson,31,80000.00,1,1992-04-20,2024-01-08 15:25:00,93.6,Exceptional,EMPL008
-9,Iris Taylor,29,71000.75,1,1994-06-08,2024-01-09 09:50:00,87.8,Consistent,EMPL009
-10,Jack Anderson,26,67000.00,1,1997-10-12,2024-01-10 11:15:00,86.5,Developing,EMPL010
-11,Karen Thomas,InvalidAge,73000.50,1,1990-02-28,2024-01-11 12:40:00,88.9,Another bad age,EMPL011
-12,Leo Martinez,33,82000.00,1,1990-01-05,2024-01-12 14:05:00,94.2,Strong performer,EMPL012
-13,Mia Jackson,24,64000.50,1,1999-12-19,2024-01-13 10:20:00,84.7,Entry level,EMPL013
-14,Noah Garcia,36,87000.75,1,1987-08-16,2024-01-14 08:55:00,95.8,Senior expert,EMPL014
-15,Olivia Rodriguez,30,76000.00,1,1993-05-23,2024-01-15 13:30:00,90.1,Mid-level,EMPL015
-16,Paul White,InvalidData,InvalidSalary,1,1995-07-11,2024-01-16 09:45:00,NotANumber,Multiple errors,EMPL016
-17,Quinn Harris,28,71000.25,1,1995-11-27,2024-01-17 11:50:00,89.3,Good worker,EMPL017
-18,Rachel Clark,34,83000.50,1,1989-03-14,2024-01-18 14:15:00,92.7,Valuable asset,EMPL018
-19,Sam Lewis,27,69000.00,1,1996-09-30,2024-01-19 10:05:00,87.5,Promising,EMPL019
-20,Tina Walker,31,77000.75,1,1992-06-18,2024-01-20 12:35:00,91.8,Dedicated,EMPL020
-21,Uma Young,29,70000.00,1,1996-02-10,2024-01-21 10:00:00,88.1,New hire,EMPL021
-22,Vincent King,33,81000.00,1,0204-09-15,2024-01-22 11:11:11,90.0,Ancient birthday,EMPL022
-23,Wendy Scott,41,91000.00,1,a,2024-01-23 12:12:12,93.3,Bad Date,EMPL023
-24,Xavier Adams,27,68000.00,1,1997-07-07,2024-01-24 13:13:13,85.5,Too long code,EMPL024LONG
-25,Yara Perez,26,62000.00,1,1998-02-02,2024-01-25 14:14:14,84.0,Recent grad,EMPL025";
+        var csvContent = """
+                         ID,Name,Age,Salary,IsActive,BirthDate,CreatedAt,Score,Description,Code
+                         1,Alice Johnson,30,75000.50,1,1993-05-15,2024-01-01 10:00:00,95.5,Excellent employee,EMPL001
+                         2,Bob Smith,25,65000.00,1,1998-08-22,2024-01-02 11:30:00,88.3,Good performer,EMPL002
+                         3,Carol White,35,85000.75,1,1988-12-10,2024-01-03 09:15:00,92.1,Senior staff,EMPL003
+                         4,David Brown,28,70000.00,1,1995-03-18,2024-01-04 14:20:00,89.7,Team player,EMPL004
+                         5,Eve Davis,32,78000.25,1,1991-07-25,2024-01-05 08:45:00,91.2,"Reliable
+                         worker",EMPL005
+                         6,Frank Miller,BadAge,68000.00,1,1996-11-30,2024-01-06 13:10:00,85.9,Age is invalid,EMPL006
+                         7,Grace Lee,27,72000.50,1,1996-09-14,2024-01-07 10:30:00,90.4,High potential,EMPL007
+                         8,Henry Wilson,31,80000.00,1,1992-04-20,2024-01-08 15:25:00,93.6,Exceptional,EMPL008
+                         9,Iris Taylor,29,71000.75,1,1994-06-08,2024-01-09 09:50:00,87.8,"Consis ""tent"" ",EMPL009
+                         10,Jack Anderson,26,67000.00,1,1997-10-12,2024-01-10 11:15:00,86.5,Developing,EMPL010
+                         11,Karen Thomas,InvalidAge,73000.50,1,1990-02-28,2024-01-11 12:40:00,88.9,Another bad age,EMPL011
+                         12,Leo Martinez,33,82000.00,1,1990-01-05,2024-01-12 14:05:00,94.2,Strong performer,EMPL012
+                         13,Mia Jackson,24,␀,1,1999-12-19,2024-01-13 10:20:00,84.7,Entry level,EMPL013
+                         14,Noah Garcia,36,87000.75,1,1987-08-16,2024-01-14 08:55:00,95.8,Senior expert,EMPL014
+                         15,Olivia Rodriguez,30,76000.00,1,1993-05-23,2024-01-15 13:30:00,90.1,Mid-level,EMPL015
+                         16,Paul White,InvalidData,InvalidSalary,1,1995-07-11,2024-01-16 09:45:00,NotANumber,Multiple errors,EMPL016
+                         17,Quinn Harris,28,71000.25,1,1995-11-27,2024-01-17 11:50:00,89.3,Good worker,EMPL017
+                         18,Rachel Clark,34,83000.50,1,1989-03-14,2024-01-18 14:15:00,92.7,Valuable asset,EMPL018
+                         19,Sam Lewis,27,69000.00,1,1996-09-30,2024-01-19 10:05:00,87.5,Promising,EMPL019
+                         20,Tina Walker,31,77000.75,1,1992-06-18,2024-01-20 12:35:00,91.8,Dedicated,EMPL020
+                         21,Uma Young,29,70000.00,1,1996-02-10,2024-01-21 10:00:00,88.1,New hire,␀
+                         22,Vincent King,33,81000.00,1,0204-09-15,2024-01-22 11:11:11,90.0,Ancient birthday,EMPL022
+                         23,Wendy Scott,41,91000.00,1,a,2024-01-23 12:12:12,93.3,Bad Date,EMPL023
+                         24,Xavier Adams,27,68000.00,1,1997-07-07,2024-01-24 13:13:13,85.5,Too long code,EMPL024LONG
+                         25,Yara Perez,26,62000.00,1,1998-02-02,2024-01-25 14:14:14,84.0,Recent grad,EMPL025
+                         """;
 
         File.WriteAllText(TestCsvFile, csvContent);
     }
