@@ -94,21 +94,17 @@ public class Program
                     $"Using custom null character: {(nullChar.Length == 0 ? "(empty string)" : nullCharUtfCode)}");
             }
 
-            var csvLoadStopwatch = Stopwatch.StartNew();
-            var dataTable = CsvParser.LoadCsvToDataTable(csvFilePath, nullChar);
-            csvLoadStopwatch.Stop();
-            Console.WriteLine($"Loaded {dataTable.Rows.Count} rows from CSV file.");
-            Console.WriteLine(
-                $"CSV loading took {csvLoadStopwatch.Elapsed.TotalSeconds:F2}s ({csvLoadStopwatch.ElapsedMilliseconds}ms).");
+            Console.WriteLine("Starting streaming CSV import...");
 
             var bulkCopyStopwatch = Stopwatch.StartNew();
             
-            var result = BulkCopyToSqlServer(connectionString,
+            var result = BulkCopyToSqlServerStreaming(connectionString,
                 destinationTable,
-                dataTable,
+                csvFilePath,
                 batchSize,
                 errorDatabase,
-                errorTable);
+                errorTable,
+                nullChar);
             
             bulkCopyStopwatch.Stop();
             Console.WriteLine(
@@ -177,6 +173,148 @@ public class Program
                     errorTable);
                 successCount = result.SuccessCount;
                 failedCount = result.FailedCount;
+            }
+        }
+
+        return (successCount, failedCount);
+    }
+
+    static (int SuccessCount, int FailedCount) BulkCopyToSqlServerStreaming(
+        string connectionString,
+        string destinationTable,
+        string csvFilePath,
+        int batchSize,
+        string? errorDatabase,
+        string? errorTable,
+        string? nullChar
+    )
+    {
+        int successCount = 0;
+        int failedCount = 0;
+
+        using (var connection = new SqlConnection(connectionString))
+        {
+            connection.Open();
+
+            // Get source database from connection
+            string destinationDatabase = connection.Database;
+
+            // Ensure error table exists if error logging is enabled
+            if (errorDatabase != null && errorTable != null)
+            {
+                EnsureErrorTableExists(connection, errorDatabase, errorTable);
+            }
+
+            // Stream CSV and process in batches
+            using (var csvReader = new CsvDataReader(csvFilePath, nullChar))
+            using (var batchedReader = new BatchedCsvReader(csvReader, batchSize))
+            {
+                // Get CSV headers for error logging
+                string csvHeaders = string.Join(",", batchedReader.ColumnNames);
+
+                while (batchedReader.HasMoreRows)
+                {
+                    var batchTable = batchedReader.ReadNextBatch();
+                    if (batchTable == null || batchTable.Rows.Count == 0)
+                        break;
+
+                    int batchStartRow = batchedReader.CurrentRowNumber - batchTable.Rows.Count;
+                    
+                    var result = ProcessBatchWithErrorHandling(
+                        connection,
+                        destinationTable,
+                        batchTable,
+                        batchStartRow,
+                        csvHeaders,
+                        destinationDatabase,
+                        errorDatabase,
+                        errorTable);
+                    
+                    successCount += result.SuccessCount;
+                    failedCount += result.FailedCount;
+                }
+            }
+        }
+
+        return (successCount, failedCount);
+    }
+
+    static (int SuccessCount, int FailedCount) ProcessBatchWithErrorHandling(
+        SqlConnection connection,
+        string destinationTable,
+        DataTable batchTable,
+        int batchStartRow,
+        string csvHeaders,
+        string destinationDatabase,
+        string? errorDatabase,
+        string? errorTable
+    )
+    {
+        int successCount = 0;
+        int failedCount = 0;
+        int rowsInBatch = batchTable.Rows.Count;
+
+        try
+        {
+            // Try to insert the batch
+            using (var bulkCopy = new SqlBulkCopy(connection))
+            {
+                bulkCopy.DestinationTableName = destinationTable;
+                bulkCopy.BatchSize = rowsInBatch;
+                bulkCopy.BulkCopyTimeout = 300;
+
+                ConfigureColumnMappings(bulkCopy, batchTable.Columns.Count);
+
+                bulkCopy.WriteToServer(batchTable);
+                successCount += rowsInBatch;
+                // Use 1-based row numbers in user-facing messages
+                Console.WriteLine($"Batch succeeded: rows {batchStartRow + 1} to {batchStartRow + rowsInBatch}");
+            }
+        }
+        catch (Exception batchEx)
+        {
+            Console.WriteLine(
+                $"Batch failed for rows {batchStartRow + 1} to {batchStartRow + rowsInBatch}: {batchEx.Message}");
+            Console.WriteLine("Processing batch rows individually...");
+
+            for (int i = 0; i < rowsInBatch; i++)
+            {
+                int rowNumber = batchStartRow + i + 1; // Convert to 1-based for user-facing messages
+                var singleRow = batchTable.Rows[i];
+
+                try
+                {
+                    using (SqlBulkCopy bulkCopy = new SqlBulkCopy(connection))
+                    {
+                        bulkCopy.DestinationTableName = destinationTable;
+                        bulkCopy.BatchSize = 1;
+                        bulkCopy.BulkCopyTimeout = 300;
+
+                        ConfigureColumnMappings(bulkCopy, batchTable.Columns.Count);
+
+                        bulkCopy.WriteToServer(new[] { singleRow });
+                        successCount++;
+                    }
+                }
+                catch (Exception rowEx)
+                {
+                    Console.WriteLine($"ERROR: Failed to import row {rowNumber}: {rowEx.Message}");
+                    failedCount++;
+
+                    if (errorDatabase != null && errorTable != null)
+                    {
+                        string csvRowData = ConvertRowToCsv(singleRow);
+                        LogErrorToTable(connection,
+                            errorDatabase,
+                            errorTable,
+                            destinationDatabase,
+                            destinationTable,
+                            rowNumber,
+                            csvHeaders,
+                            csvRowData,
+                            rowEx.Message);
+                    }
+                }
             }
         }
 
