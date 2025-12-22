@@ -120,7 +120,9 @@ public class CsvDataReader : IDataReader
     public string GetString(int i)
     {
         var value = GetValue(i);
-        return value == DBNull.Value ? null! : (string)value;
+        if (value == DBNull.Value)
+            throw new InvalidCastException($"Cannot convert DBNull to string for column {i}.");
+        return (string)value;
     }
 
     public void Close()

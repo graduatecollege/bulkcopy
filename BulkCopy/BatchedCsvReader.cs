@@ -74,8 +74,9 @@ public class BatchedCsvReader : IDisposable
             return null;
         }
 
-        // Check if there are more rows
-        _hasMoreRows = rowsRead == _batchSize; // Assume more rows if we filled the batch
+        // If we filled the entire batch, assume more rows are available
+        // The caller should check for null on the next call
+        _hasMoreRows = (rowsRead == _batchSize);
 
         return dataTable;
     }
