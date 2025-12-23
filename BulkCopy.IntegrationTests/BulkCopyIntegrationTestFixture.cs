@@ -1,4 +1,5 @@
-﻿using Microsoft.Data.SqlClient;
+﻿using System.Diagnostics;
+using Microsoft.Data.SqlClient;
 using Testcontainers.MsSql;
 using static System.Runtime.InteropServices.OSPlatform;
 using static System.Runtime.InteropServices.RuntimeInformation;
@@ -24,17 +25,6 @@ public sealed class BulkCopyIntegrationTestFixture : IAsyncLifetime
     }
 
     public string ConnectionString => _sqlContainer.GetConnectionString();
-    public string FullTestDbConnectionString => $"{ConnectionString};Database={TestDatabase}";
-
-    public Task<SqlConnection> OpenConnectionAsync(string database)
-    {
-        var cs = $"{ConnectionString};Database={database}";
-        return OpenConnectionWithConnectionStringAsync(cs);
-    }
-
-    public Task<SqlConnection> OpenConnectionToTestDbAsync() => OpenConnectionAsync(TestDatabase);
-
-    public Task<SqlConnection> OpenConnectionToErrorDbAsync() => OpenConnectionAsync(ErrorDatabase);
 
     public async Task InitializeAsync()
     {
@@ -59,6 +49,22 @@ public sealed class BulkCopyIntegrationTestFixture : IAsyncLifetime
         await _sqlContainer.DisposeAsync();
     }
 
+    public Task<SqlConnection> OpenConnectionAsync(string database)
+    {
+        var cs = $"{ConnectionString};Database={database}";
+        return OpenConnectionWithConnectionStringAsync(cs);
+    }
+
+    public Task<SqlConnection> OpenConnectionToTestDbAsync()
+    {
+        return OpenConnectionAsync(TestDatabase);
+    }
+
+    public Task<SqlConnection> OpenConnectionToErrorDbAsync()
+    {
+        return OpenConnectionAsync(ErrorDatabase);
+    }
+
     private static async Task<SqlConnection> OpenConnectionWithConnectionStringAsync(string connectionString)
     {
         var connection = new SqlConnection(connectionString);
@@ -74,19 +80,22 @@ public sealed class BulkCopyIntegrationTestFixture : IAsyncLifetime
         await createDbCommand.ExecuteNonQueryAsync();
 
         await connection.ChangeDatabaseAsync(TestDatabase);
-        await using var createTableCommand = new SqlCommand($@"
-            CREATE TABLE {TestTable} (
-                ID INT,
-                Name NVARCHAR(100),
-                Age INT,
-                Salary DECIMAL(10,2),
-                IsActive NVARCHAR(1),
-                BirthDate date,
-                CreatedAt datetime2,
-                Score decimal(4,2),
-                Description NVARCHAR(MAX),
-                Code NVARCHAR(7) not null
-            );", connection);
+        await using var createTableCommand = new SqlCommand(
+            $"""
+             CREATE TABLE {TestTable} (
+                 ID INT,
+                 Name NVARCHAR(100),
+                 Age INT,
+                 Salary DECIMAL(10,2),
+                 IsActive NVARCHAR(1),
+                 BirthDate date,
+                 CreatedAt datetime2,
+                 Score decimal(4,2),
+                 Description NVARCHAR(MAX),
+                 Code NVARCHAR(7) not null
+             );
+             """,
+            connection);
         await createTableCommand.ExecuteNonQueryAsync();
     }
 
@@ -145,9 +154,9 @@ public sealed class BulkCopyIntegrationTestFixture : IAsyncLifetime
     {
         var projectDir = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", "BulkCopy");
 
-        var process = new System.Diagnostics.Process
+        var process = new Process
         {
-            StartInfo = new System.Diagnostics.ProcessStartInfo
+            StartInfo = new ProcessStartInfo
             {
                 FileName = "dotnet",
                 Arguments = "build -c Release",
@@ -180,20 +189,20 @@ public sealed class BulkCopyIntegrationTestFixture : IAsyncLifetime
                 ? "osx-x64"
                 : "linux-x64";
 
-        var bulkCopyPath = Path.Combine(projectDir, "bin", "Release", "net10.0", rid,
-            IsOSPlatform(Windows) ? "BulkCopy.exe" : "BulkCopy");
-        if (!File.Exists(bulkCopyPath))
+        var bulkCopyPath = Path.Combine(projectDir,
+            "bin",
+            "Release",
+            "net10.0",
+            rid,
+            "BulkCopy");
+        if (IsOSPlatform(Windows))
         {
-            bulkCopyPath = Path.Combine(projectDir, "bin", "Release", "net10.0", "BulkCopy");
-            if (IsOSPlatform(Windows))
-            {
-                bulkCopyPath += ".exe";
-            }
+            bulkCopyPath += ".exe";
         }
 
-        var process = new System.Diagnostics.Process
+        var process = new Process
         {
-            StartInfo = new System.Diagnostics.ProcessStartInfo
+            StartInfo = new ProcessStartInfo
             {
                 FileName = bulkCopyPath,
                 Arguments =
