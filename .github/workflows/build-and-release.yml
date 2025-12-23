@@ -12,46 +12,51 @@ jobs:
   test-unit:
     name: Run Unit Tests
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      
+
       - name: Restore dependencies
         run: dotnet restore
-      
+
       - name: Build
         run: dotnet build --configuration Release --no-restore
-      
+
       - name: Run unit tests
-        run: dotnet test BulkCopy.Tests/BulkCopy.Tests.csproj --configuration Release --no-build --verbosity normal
+        run: >
+          dotnet test BulkCopy.Tests/BulkCopy.Tests.csproj
+          --configuration Release --no-build --verbosity normal
 
   test-integration:
     name: Run Integration Tests
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      
+
       - name: Restore dependencies
         run: dotnet restore
-      
+
       - name: Build
         run: dotnet build --configuration Release --no-restore
-      
+
       - name: Run integration tests
-        run: dotnet test BulkCopy.IntegrationTests/BulkCopy.IntegrationTests.csproj --configuration Release --no-build --verbosity normal
+        run: >
+          dotnet test
+          BulkCopy.IntegrationTests/BulkCopy.IntegrationTests.csproj
+          --configuration Release --no-build --verbosity normal
 
   build:
     name: Build Binaries
@@ -68,16 +73,16 @@ jobs:
             artifact-name: bulkcopy-osx-x64
           - runtime: osx-arm64
             artifact-name: bulkcopy-osx-arm64
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      
+
       - name: Publish binary
         run: |
           dotnet publish BulkCopy/BulkCopy.csproj \
@@ -85,19 +90,21 @@ jobs:
             --runtime ${{ matrix.runtime }} \
             --self-contained true \
             --output ./publish/${{ matrix.runtime }}
-      
+
       - name: Create archive (Linux/macOS)
-        if: startsWith(matrix.runtime, 'linux-') || startsWith(matrix.runtime, 'osx-')
+        if: >
+          startsWith(matrix.runtime, 'linux-') ||
+          startsWith(matrix.runtime, 'osx-')
         run: |
           cd ./publish/${{ matrix.runtime }}
           tar -czf ../${{ matrix.artifact-name }}.tar.gz *
-      
+
       - name: Create archive (Windows)
         if: startsWith(matrix.runtime, 'win-')
         run: |
           cd ./publish/${{ matrix.runtime }}
           zip -r ../${{ matrix.artifact-name }}.zip *
-      
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -111,19 +118,19 @@ jobs:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: ./artifacts
-      
+
       - name: Display structure of downloaded files
         run: ls -R ./artifacts
-      
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
