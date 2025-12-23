@@ -1,5 +1,4 @@
 using System.Data;
-using Xunit;
 
 namespace BulkCopy.Tests;
 

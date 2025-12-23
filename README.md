@@ -1,16 +1,27 @@
 # bulkcopy
+
 A C# SqlBulkCopy binary tailored for Grad College data pipelines.
 
 ## Description
-A .NET 10 console application that uses SqlBulkCopy to efficiently import CSV files into SQL Server database tables. Built as a self-contained Linux binary for easy deployment.
+
+A .NET console application that uses SqlBulkCopy to efficiently import CSV files into SQL Server database tables.
+
+This tool replaces dbatools' Import-DbaCsv to allow for more control over the import process.
 
 ## Features
-- Fast bulk import of CSV files to SQL Server
-- Support for quoted CSV fields with embedded commas
-- Configurable batch size for optimal performance
-- Progress reporting during import
-- Self-contained Linux binary (no .NET runtime required on target system)
-- Optional error logging to a database table for failed rows
+
+- Usual benefits and caveats of SqlBulkCopy:
+  - High performance
+  - Constraints and triggers are not used
+- Skips bad rows, optionally inserting failed rows to an error table
+- Insert null values with a custom null character
+- Supports arbitrarily large files
+
+## Limitations
+
+- The target table must exist before running the import.
+- CSV file must have a header row, and be UTF-8 encoded.
+- At this time the CSV format details are not configurable. Must use comma delimiters, `"` quotes.
 
 ## Usage
 
@@ -30,54 +41,27 @@ BulkCopy <csv-file> <connection-string> <table-name> [batch-size] [--error-datab
 ### Example
 
 ```bash
-./BulkCopy data.csv "Server=myserver;Database=mydb;User Id=myuser;Password=mypass;TrustServerCertificate=True;" MyTable 1000
+./BulkCopy data.csv "Server=myserver;Database=mydb;User Id=myuser;Password=mypass;TrustServerCertificate=True;" MyTable
 ```
 
 ### Example with Error Logging
 
 ```bash
-./BulkCopy data.csv "Server=myserver;Database=mydb;User Id=myuser;Password=mypass;TrustServerCertificate=True;" MyTable 1000 --error-database ErrorsDB --error-table ImportErrors
-```
-
-### Example with Custom Null Character
-
-```bash
-./BulkCopy data.csv "Server=myserver;Database=mydb;User Id=myuser;Password=mypass;TrustServerCertificate=True;" MyTable 1000 --null-char "NULL"
+./BulkCopy data.csv "Server=myserver;Database=mydb;User Id=myuser;Password=mypass;TrustServerCertificate=True;" MyTable 1000 --error-database ErrorsDB
 ```
 
 ## CSV Format
+
 - First row must contain column headers
-- Column headers should match the target table column names (or use ordinal position mapping)
+- Column headers should match the target table column names
 - Supports standard CSV format with comma delimiters
 - Supports quoted fields with embedded commas and newlines
 - Empty lines are skipped
-- Unquoted fields matching the null character (default: `\0`) are imported as SQL NULL values
-- To import the literal null character value, wrap it in quotes
+- Unquoted fields matching the null character (default: `␀`) are imported as SQL NULL values
+- To import the literal ␀ character value, wrap it in quotes
 
-## Building from Source
+## Publish as self-contained Linux binary
 
-### Build for development
-```bash
-cd BulkCopy
-dotnet build
-```
-
-### Run tests
-```bash
-cd BulkCopy.Tests
-dotnet test
-```
-
-All 42 unit tests cover:
-- Simple and complex CSV parsing
-- Quoted fields with commas, newlines, and escaped quotes
-- Different line ending formats (Unix, Windows, Mac)
-- Edge cases like empty files and variable-length rows
-- CSV row conversion with proper escaping
-- SQL identifier validation and sanitization
-- Null character handling (default and custom)
-
-### Publish as self-contained Linux binary
 ```bash
 cd BulkCopy
 dotnet publish -c Release -r linux-x64 --self-contained true
@@ -85,39 +69,31 @@ dotnet publish -c Release -r linux-x64 --self-contained true
 
 The binary will be available at: `bin/Release/net10.0/linux-x64/publish/BulkCopy`
 
-## Requirements
-- .NET 10 SDK (for building)
-- No runtime dependencies on target Linux system (self-contained)
-- SQL Server database (2012 or later)
-
 ## Error Logging
 
 When the `--error-database` option is specified, the tool will:
+
 1. Automatically create an error table if it doesn't exist
 2. Log all failed rows to the error table with detailed information
 
 ### Error Table Schema
 
 The error table includes the following columns:
+
 - `Id`: Auto-incrementing primary key
 - `SourceDatabase`: The database where the import was attempted
 - `SourceTable`: The table where the import was attempted
 - `RowNumber`: The row number (1-based) in the CSV file that failed
-- `CsvHeaders`: Comma-separated column names from the CSV header
-- `CsvRowData`: CSV representation of the failed row
+- `CsvRowData`: CSV representation of the failed row, including the header row
 - `ErrorMessage`: The error message explaining why the row failed
 - `ErrorTimestamp`: When the error occurred
 
-This allows you to:
-- Review all failed imports in one place
-- Understand patterns in data quality issues
-- Re-attempt imports after fixing data issues
-- Maintain an audit trail of import problems
+## Support
 
-## Notes
-- The target table must exist before running the import
-- Column mapping is done by ordinal position (first CSV column maps to first table column, etc.)
-- Connection timeout is set to 5 minutes for large imports
-- The application provides progress updates every batch
-- When errors occur during batch operations, the tool automatically switches to row-by-row processing
-- Failed rows are logged to the error table (if configured) and do not stop the import process
+This product is supported by the Graduate College on a best-effort basis.
+
+As of the last update to this README, the expected End-of-Life and End-of-Support dates of this product are 2028-11-24.
+
+End-of-Life was decided upon based on these dependencies:
+
+- .NET Core 10 (2028-11-24)

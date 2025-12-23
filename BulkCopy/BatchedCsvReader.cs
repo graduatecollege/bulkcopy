@@ -3,91 +3,82 @@ using System.Data;
 namespace BulkCopy;
 
 /// <summary>
-/// Wraps a CsvDataReader to provide batch reading capabilities.
-/// Reads a limited number of rows at a time to support batch-based error handling.
+///     Wraps a CsvDataReader to provide batch reading capabilities.
+///     Reads a limited number of rows at a time to support batch-based error handling.
 /// </summary>
-public class BatchedCsvReader : IDisposable
+public class BatchedCsvReader(CsvDataReader csvReader, int batchSize) : IDisposable
 {
-    private readonly CsvDataReader _csvReader;
-    private readonly int _batchSize;
-    private bool _hasMoreRows = true;
-    private int _currentRowNumber = 0;
-
-    public BatchedCsvReader(CsvDataReader csvReader, int batchSize)
-    {
-        _csvReader = csvReader;
-        _batchSize = batchSize;
-    }
-
-    public int FieldCount => _csvReader.FieldCount;
-
     public string[] ColumnNames
     {
         get
         {
-            var names = new string[_csvReader.FieldCount];
-            for (int i = 0; i < _csvReader.FieldCount; i++)
+            var names = new string[csvReader.FieldCount];
+            for (var i = 0; i < csvReader.FieldCount; i++)
             {
-                names[i] = _csvReader.GetName(i);
+                names[i] = csvReader.GetName(i);
             }
+
             return names;
         }
     }
 
-    public bool HasMoreRows => _hasMoreRows;
+    public bool HasMoreRows { get; private set; } = true;
 
-    public int CurrentRowNumber => _currentRowNumber;
+    public int CurrentRowNumber { get; private set; }
+
+    public void Dispose()
+    {
+        csvReader.Dispose();
+    }
 
     /// <summary>
-    /// Reads the next batch of rows into a DataTable.
-    /// Returns null when no more rows are available.
+    ///     Reads the next batch of rows into a DataTable.
+    ///     Returns null when no more rows are available.
     /// </summary>
     public DataTable? ReadNextBatch()
     {
-        if (!_hasMoreRows)
+        if (!HasMoreRows)
+        {
             return null;
+        }
 
         var dataTable = new DataTable();
 
         // Create columns from the CSV reader
-        for (int i = 0; i < _csvReader.FieldCount; i++)
+        for (var i = 0; i < csvReader.FieldCount; i++)
         {
-            dataTable.Columns.Add(_csvReader.GetName(i));
+            dataTable.Columns.Add(csvReader.GetName(i));
         }
 
-        int rowsRead = 0;
-        while (rowsRead < _batchSize && _csvReader.Read())
+        var rowsRead = 0;
+        while (rowsRead < batchSize && csvReader.Read())
         {
-            _currentRowNumber++;
+            CurrentRowNumber++;
             var row = dataTable.NewRow();
-            for (int i = 0; i < _csvReader.FieldCount; i++)
+            for (var i = 0; i < csvReader.FieldCount; i++)
             {
-                row[i] = _csvReader.GetValue(i);
+                row[i] = csvReader.GetValue(i);
             }
+
             dataTable.Rows.Add(row);
             rowsRead++;
         }
 
         if (rowsRead == 0)
         {
-            _hasMoreRows = false;
+            HasMoreRows = false;
             return null;
         }
 
         // If we filled the entire batch, assume more rows are available
         // The caller should check for null on the next call
-        _hasMoreRows = (rowsRead == _batchSize);
+        HasMoreRows = rowsRead == batchSize;
 
         return dataTable;
     }
 
     public void Close()
     {
-        _csvReader.Close();
-    }
-
-    public void Dispose()
-    {
-        _csvReader.Dispose();
+        csvReader.Close();
     }
 }

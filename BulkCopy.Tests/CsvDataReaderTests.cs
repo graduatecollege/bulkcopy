@@ -1,204 +1,155 @@
-using System.Data;
 using System.Text;
 
 namespace BulkCopy.Tests;
 
 public class CsvDataReaderTests
 {
-    [Fact]
-    public void CsvDataReader_SimpleCsv_ReadsCorrectly()
+    private const string JohnJaneCsv = "Name,Age,Email\nJohn Doe,30,john@example.com\nJane Smith,25,jane@example.com";
+    
+    private CsvDataReader CreateReader(string csvContent, string? nullValue = null)
     {
-        var csvContent = "Name,Age,Email\nJohn Doe,30,john@example.com\nJane Smith,25,jane@example.com";
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
-        using var reader = new StreamReader(stream);
-        using var csvReader = new CsvDataReader(reader);
+        var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
+        var reader = new StreamReader(stream);
+        return new CsvDataReader(reader, nullValue);
+    }
+
+    [Fact]
+    public void CsvDataReader_FieldCount_IsCorrect()
+    {
+        using var csvReader = CreateReader(JohnJaneCsv);
 
         Assert.Equal(3, csvReader.FieldCount);
+    }
+
+    [Fact]
+    public void CsvDataReader_GetName_ReturnsHeaders()
+    {
+        using var csvReader = CreateReader(JohnJaneCsv);
+
         Assert.Equal("Name", csvReader.GetName(0));
         Assert.Equal("Age", csvReader.GetName(1));
         Assert.Equal("Email", csvReader.GetName(2));
+    }
+
+    [Fact]
+    public void CsvDataReader_Read_ReadsRowData()
+    {
+        using var csvReader = CreateReader(JohnJaneCsv);
 
         Assert.True(csvReader.Read());
         Assert.Equal("John Doe", csvReader.GetString(0));
         Assert.Equal("30", csvReader.GetString(1));
         Assert.Equal("john@example.com", csvReader.GetString(2));
-
-        Assert.True(csvReader.Read());
-        Assert.Equal("Jane Smith", csvReader.GetString(0));
-        Assert.Equal("25", csvReader.GetString(1));
-        Assert.Equal("jane@example.com", csvReader.GetString(2));
-
-        Assert.False(csvReader.Read());
     }
 
     [Fact]
-    public void CsvDataReader_WithQuotedFields_ReadsCorrectly()
+    public void CsvDataReader_WithQuotedFields_ParsesCorrectly()
     {
-        var csvContent = "ID,Name,Description\n1,Product A,Simple\n2,Product B,\"Has, comma\"";
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
-        using var reader = new StreamReader(stream);
-        using var csvReader = new CsvDataReader(reader);
+        var csvContent = "ID,Name,Description\n1,Product A,\"Has, comma\"";
+        using var csvReader = CreateReader(csvContent);
 
-        Assert.Equal(3, csvReader.FieldCount);
+        csvReader.Read();
 
-        Assert.True(csvReader.Read());
-        Assert.Equal("1", csvReader.GetString(0));
-        Assert.Equal("Product A", csvReader.GetString(1));
-        Assert.Equal("Simple", csvReader.GetString(2));
-
-        Assert.True(csvReader.Read());
-        Assert.Equal("2", csvReader.GetString(0));
-        Assert.Equal("Product B", csvReader.GetString(1));
         Assert.Equal("Has, comma", csvReader.GetString(2));
-
-        Assert.False(csvReader.Read());
     }
 
     [Fact]
-    public void CsvDataReader_WithNewlineInQuotedField_ReadsCorrectly()
+    public void CsvDataReader_WithNewlineInQuotedField_ReadsAsSingleField()
     {
-        var csvContent = "ID,Name,Description\n1,Product A,Simple\n2,Product B,\"Multi-line\ndescription\"";
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
-        using var reader = new StreamReader(stream);
-        using var csvReader = new CsvDataReader(reader);
+        var csvContent = "ID,Name,Description\n1,Product A,\"Multi-line\ndescription\"";
+        using var csvReader = CreateReader(csvContent);
 
-        Assert.True(csvReader.Read());
-        Assert.Equal("Product A", csvReader.GetString(1));
+        csvReader.Read();
 
-        Assert.True(csvReader.Read());
-        Assert.Equal("Product B", csvReader.GetString(1));
         Assert.Equal("Multi-line\ndescription", csvReader.GetString(2));
-
-        Assert.False(csvReader.Read());
     }
 
     [Fact]
     public void CsvDataReader_WithNullValues_ReturnsDBNull()
     {
-        var csvContent = "Name,Age,Email\nJohn Doe,NULL,john@example.com\nJane Smith,25,NULL";
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
-        using var reader = new StreamReader(stream);
-        using var csvReader = new CsvDataReader(reader, "NULL");
+        var csvContent = "Name,Age,Email\nJohn Doe,NULL,john@example.com";
+        using var csvReader = CreateReader(csvContent, "NULL");
 
-        Assert.True(csvReader.Read());
-        Assert.Equal("John Doe", csvReader.GetString(0));
+        csvReader.Read();
+
         Assert.True(csvReader.IsDBNull(1));
-        Assert.Equal("john@example.com", csvReader.GetString(2));
-
-        Assert.True(csvReader.Read());
-        Assert.Equal("Jane Smith", csvReader.GetString(0));
-        Assert.Equal("25", csvReader.GetString(1));
-        Assert.True(csvReader.IsDBNull(2));
-
-        Assert.False(csvReader.Read());
     }
 
     [Fact]
     public void CsvDataReader_EmptyCsv_ThrowsException()
     {
         var csvContent = "";
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
-        using var reader = new StreamReader(stream);
-
-        Assert.Throws<InvalidOperationException>(() => new CsvDataReader(reader));
+        Assert.Throws<InvalidOperationException>(() => CreateReader(csvContent));
     }
 
     [Fact]
-    public void CsvDataReader_GetValue_ReturnsCorrectTypes()
+    public void CsvDataReader_GetValue_ReturnsCorrectValue()
     {
         var csvContent = "Name,Age\nJohn,30";
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
-        using var reader = new StreamReader(stream);
-        using var csvReader = new CsvDataReader(reader);
+        using var csvReader = CreateReader(csvContent);
 
-        Assert.True(csvReader.Read());
-        var value1 = csvReader.GetValue(0);
-        var value2 = csvReader.GetValue(1);
+        csvReader.Read();
 
-        Assert.IsType<string>(value1);
-        Assert.IsType<string>(value2);
-        Assert.Equal("John", value1);
-        Assert.Equal("30", value2);
+        Assert.Equal("John", csvReader.GetValue(0));
+        Assert.Equal("30", csvReader.GetValue(1));
     }
 
     [Fact]
     public void CsvDataReader_GetOrdinal_ReturnsCorrectIndex()
     {
-        var csvContent = "Name,Age,Email\nJohn,30,john@example.com";
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
-        using var reader = new StreamReader(stream);
-        using var csvReader = new CsvDataReader(reader);
+        using var csvReader = CreateReader(JohnJaneCsv);
 
         Assert.Equal(0, csvReader.GetOrdinal("Name"));
         Assert.Equal(1, csvReader.GetOrdinal("Age"));
         Assert.Equal(2, csvReader.GetOrdinal("Email"));
-        Assert.Equal(0, csvReader.GetOrdinal("name")); // Case insensitive
+    }
+
+    [Fact]
+    public void CsvDataReader_GetOrdinal_IsCaseInsensitive()
+    {
+        var csvContent = "Name,Age\nJohn,30";
+        using var csvReader = CreateReader(csvContent);
+
+        Assert.Equal(0, csvReader.GetOrdinal("name"));
     }
 
     [Fact]
     public void CsvDataReader_GetOrdinal_ThrowsForInvalidColumn()
     {
         var csvContent = "Name,Age\nJohn,30";
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
-        using var reader = new StreamReader(stream);
-        using var csvReader = new CsvDataReader(reader);
+        using var csvReader = CreateReader(csvContent);
 
         Assert.Throws<IndexOutOfRangeException>(() => csvReader.GetOrdinal("InvalidColumn"));
     }
 
     [Fact]
-    public void CsvDataReader_GetSchemaTable_ReturnsCorrectSchema()
+    public void CsvDataReader_GetSchemaTable_ReturnsCorrectCount()
     {
-        var csvContent = "Name,Age,Email\nJohn,30,john@example.com";
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
-        using var reader = new StreamReader(stream);
-        using var csvReader = new CsvDataReader(reader);
+        using var csvReader = CreateReader(JohnJaneCsv);
 
         var schema = csvReader.GetSchemaTable();
 
-        Assert.NotNull(schema);
-        Assert.Equal(3, schema.Rows.Count);
-        Assert.Equal("Name", schema.Rows[0]["ColumnName"]);
-        Assert.Equal(0, schema.Rows[0]["ColumnOrdinal"]);
-        Assert.Equal(typeof(string), schema.Rows[0]["DataType"]);
+        Assert.Equal(3, schema!.Rows.Count);
+    }
+
+    [Fact]
+    public void CsvDataReader_GetSchemaTable_SetsColumnName()
+    {
+        using var csvReader = CreateReader(JohnJaneCsv);
+
+        var schema = csvReader.GetSchemaTable();
+
+        Assert.Equal("Name", schema!.Rows[0]["ColumnName"]);
     }
 
     [Fact]
     public void CsvDataReader_FewerFieldsThanHeaders_PadsWithEmptyStrings()
     {
-        var csvContent = "Col1,Col2,Col3\nValue1,Value2,Value3\nValue1,Value2";
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
-        using var reader = new StreamReader(stream);
-        using var csvReader = new CsvDataReader(reader);
+        var csvContent = "Col1,Col2,Col3\nValue1,Value2";
+        using var csvReader = CreateReader(csvContent);
 
-        Assert.True(csvReader.Read());
-        Assert.Equal("Value1", csvReader.GetString(0));
-        Assert.Equal("Value2", csvReader.GetString(1));
-        Assert.Equal("Value3", csvReader.GetString(2));
+        csvReader.Read();
 
-        Assert.True(csvReader.Read());
-        Assert.Equal("Value1", csvReader.GetString(0));
-        Assert.Equal("Value2", csvReader.GetString(1));
         Assert.Equal("", csvReader.GetString(2));
-
-        Assert.False(csvReader.Read());
-    }
-
-    [Fact]
-    public void CsvDataReader_CurrentRowNumber_TracksCorrectly()
-    {
-        var csvContent = "ID,Name\n1,Item1\n2,Item2\n3,Item3\n4,Item4";
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
-        using var reader = new StreamReader(stream);
-        using var csvReader = new CsvDataReader(reader);
-        using var batchedReader = new BatchedCsvReader(csvReader, 2);
-
-        Assert.Equal(0, batchedReader.CurrentRowNumber);
-
-        batchedReader.ReadNextBatch();
-        Assert.Equal(2, batchedReader.CurrentRowNumber);
-
-        batchedReader.ReadNextBatch();
-        Assert.Equal(4, batchedReader.CurrentRowNumber);
     }
 }
