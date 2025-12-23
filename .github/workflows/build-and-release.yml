@@ -89,6 +89,8 @@ jobs:
             --configuration Release \
             --runtime ${{ matrix.runtime }} \
             --self-contained true \
+            --property:PublishSingleFile=true \
+            --property:PublishTrimmed=true \
             --output ./publish/${{ matrix.runtime }}
 
       - name: Create archive (Linux/macOS)
