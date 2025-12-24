@@ -1,4 +1,6 @@
 ﻿using System.CommandLine;
+using System.CommandLine.Help;
+using System.CommandLine.Invocation;
 using System.Data;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
@@ -8,7 +10,7 @@ namespace BulkCopy;
 
 public class Program
 {
-    private static readonly Regex SqlIdentifierRegex = new("^[a-zA-Z_][a-zA-Z0-9_]*$",RegexOptions.Compiled);
+    private static readonly Regex SqlIdentifierRegex = new("^[a-zA-Z_][a-zA-Z0-9_]*$", RegexOptions.Compiled);
 
     private static async Task<int> Main(string[] args)
     {
@@ -70,29 +72,36 @@ public class Program
             nullCharOption
         };
 
-        var parseResult = rootCommand.Parse(args);
-
-        if (parseResult.Errors.Count > 0)
+        foreach (var opt in rootCommand.Options)
         {
-            foreach (var parseError in parseResult.Errors)
+            if (opt is not HelpOption defaultHelpOption)
             {
-                Console.Error.WriteLine(parseError.Message);
+                continue;
             }
 
-            return 1;
+            defaultHelpOption.Action = new CustomHelpAction((HelpAction)defaultHelpOption.Action!);
+            break;
         }
 
-        var exitCode = ExecuteBulkCopy(
-            parseResult.GetRequiredValue(csvFileArgument),
-            parseResult.GetRequiredValue(connectionStringArgument),
-            parseResult.GetRequiredValue(tableNameArgument),
-            parseResult.GetValue(batchSizeArgument),
-            parseResult.GetValue(errorDatabaseOption),
-            parseResult.GetValue(errorTableOption),
-            parseResult.GetRequiredValue(nullCharOption)
-        );
+        rootCommand.SetAction(parseResult =>
+        {
+            var exitCode = ExecuteBulkCopy(
+                parseResult.GetRequiredValue(csvFileArgument),
+                parseResult.GetRequiredValue(connectionStringArgument),
+                parseResult.GetRequiredValue(tableNameArgument),
+                parseResult.GetValue(batchSizeArgument),
+                parseResult.GetValue(errorDatabaseOption),
+                parseResult.GetValue(errorTableOption),
+                parseResult.GetRequiredValue(nullCharOption)
+            );
 
-        return exitCode;
+            return exitCode;
+        });
+
+
+        var parseResult = rootCommand.Parse(args);
+
+        return await parseResult.InvokeAsync();
     }
 
     private static int ExecuteBulkCopy(string csvFilePath,
@@ -254,12 +263,13 @@ public class Program
 
             bulkCopy.WriteToServer(batchTable);
             successCount += rowsInBatch;
-            
+
             Console.WriteLine($"Batch succeeded: rows {batchStartRow + 1} to {batchStartRow + rowsInBatch}");
         }
         catch (Exception batchEx)
         {
-            Console.WriteLine($"Batch failed for rows {batchStartRow + 1} to {batchStartRow + rowsInBatch}: {batchEx.Message}");
+            Console.WriteLine(
+                $"Batch failed for rows {batchStartRow + 1} to {batchStartRow + rowsInBatch}: {batchEx.Message}");
             Console.WriteLine("Processing batch rows individually...");
 
             for (var i = 0; i < rowsInBatch; i++)
@@ -412,5 +422,32 @@ public class Program
         }
 
         return sanitized;
+    }
+}
+
+internal class CustomHelpAction : SynchronousCommandLineAction
+{
+    private readonly HelpAction _defaultHelp;
+
+    public CustomHelpAction(HelpAction action) => _defaultHelp = action;
+
+    public override int Invoke(ParseResult parseResult)
+    {
+        int result = _defaultHelp.Invoke(parseResult);
+
+        Console.WriteLine("""
+                          Examples:
+                            
+                            Bulk copy csv-file.csv to table MyTable in database MyDB on localhost
+                            
+                              ./BulkCopy csv-file.csv "Server=127.0.0.1,56791;Database=MyDB;User Id=sa;Password=password;TrustServerCertificate=True" MyTable
+                              
+                            Log errors into ErrorDB.dbo.BulkCopyErrors as well
+                            
+                              ./BulkCopy csv-file.csv "Server=127.0.0.1,56791;Database=MyDB;User Id=sa;Password=password;TrustServerCertificate=True" MyTable --error-database ErrorDB
+                              
+                          """);
+
+        return result;
     }
 }
