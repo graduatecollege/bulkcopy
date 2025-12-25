@@ -121,4 +121,58 @@ public class ProgramTests
         Assert.Throws<ArgumentException>(() =>
             Program.SanitizeSqlIdentifier("123Database"));
     }
+
+    [Fact]
+    public void ResolveConnectionString_LiteralString_ReturnsUnchanged()
+    {
+        var input = "Server=myServerAddress;Database=myDataBase;User Id=myUsername;Password=myPassword;";
+        var result = Program.ResolveConnectionString(input);
+        Assert.Equal(input, result);
+    }
+
+    [Fact]
+    public void ResolveConnectionString_FilePath_ReadsFromFile()
+    {
+        var tempFile = Path.GetTempFileName();
+        var expected = "Server=myServerFromFile;";
+        try
+        {
+            File.WriteAllText(tempFile, expected);
+            
+            var result = Program.ResolveConnectionString(tempFile);
+            Assert.Equal(expected, result);
+        }
+        finally
+        {
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void ResolveConnectionString_RelativeFilePath_ReadsFromFile()
+    {
+        var filename = "test_conn.txt";
+        var expected = "Server=myRelativeServer;";
+        File.WriteAllText(filename, expected);
+        try
+        {
+            var result = Program.ResolveConnectionString("./" + filename);
+            Assert.Equal(expected, result);
+            
+            result = Program.ResolveConnectionString(".\\" + filename);
+            Assert.Equal(expected, result);
+        }
+        finally
+        {
+            File.Delete(filename);
+        }
+    }
+
+    [Fact]
+    public void ResolveConnectionString_NonExistentFilePath_ReturnsInput()
+    {
+        var input = "./non-existent-file.txt";
+        var result = Program.ResolveConnectionString(input);
+        Assert.Equal(input, result);
+    }
 }

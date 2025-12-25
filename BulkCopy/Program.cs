@@ -85,9 +85,12 @@ public class Program
 
         rootCommand.SetAction(parseResult =>
         {
+            var connectionString = parseResult.GetRequiredValue(connectionStringArgument);
+            connectionString = ResolveConnectionString(connectionString);
+
             var exitCode = ExecuteBulkCopy(
                 parseResult.GetRequiredValue(csvFileArgument),
-                parseResult.GetRequiredValue(connectionStringArgument),
+                connectionString,
                 parseResult.GetRequiredValue(tableNameArgument),
                 parseResult.GetValue(batchSizeArgument),
                 parseResult.GetValue(errorDatabaseOption),
@@ -102,6 +105,26 @@ public class Program
         var parseResult = rootCommand.Parse(args);
 
         return await parseResult.InvokeAsync();
+    }
+
+    public static string ResolveConnectionString(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return input;
+        }
+
+        bool isPath = input.StartsWith('/') || 
+                      input.StartsWith('\\') || 
+                      input.StartsWith('.') || 
+                      (input.Length >= 2 && char.IsLetter(input[0]) && input[1] == ':');
+
+        if (isPath && File.Exists(input))
+        {
+            return File.ReadAllText(input).Trim();
+        }
+
+        return input;
     }
 
     private static int ExecuteBulkCopy(string csvFilePath,
