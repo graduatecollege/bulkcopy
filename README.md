@@ -26,7 +26,7 @@ This tool replaces dbatools' Import-DbaCsv to allow for more control over the im
 ## Usage
 
 ```bash
-BulkCopy <csv-file> <connection-string> <table-name> [batch-size] [--error-database <db>] [--error-table <table>] [--null-char <char>]
+BulkCopy <csv-file> <connection-string> <table-name>
 ```
 
 ### Parameters
@@ -41,13 +41,18 @@ BulkCopy <csv-file> <connection-string> <table-name> [batch-size] [--error-datab
 ### Example
 
 ```bash
-./BulkCopy data.csv "Server=myserver;Database=mydb;User Id=myuser;Password=mypass;TrustServerCertificate=True;" MyTable
+./BulkCopy data.csv \
+  "Server=myserver;Database=mydb;User Id=myuser;Password=mypass;TrustServerCertificate=True;" \
+  MyTable
 ```
 
 ### Example with Error Logging
 
 ```bash
-./BulkCopy data.csv "Server=myserver;Database=mydb;User Id=myuser;Password=mypass;TrustServerCertificate=True;" MyTable 1000 --error-database ErrorsDB
+./BulkCopy data.csv \
+  "Server=myserver;Database=mydb;User Id=myuser;Password=mypass;TrustServerCertificate=True;" \
+  MyTable \
+  --error-database ErrorsDB
 ```
 
 ## CSV Format
@@ -60,21 +65,11 @@ BulkCopy <csv-file> <connection-string> <table-name> [batch-size] [--error-datab
 - Unquoted fields matching the null character (default: `␀`) are imported as SQL NULL values
 - To import the literal ␀ character value, wrap it in quotes
 
-## Publish as self-contained Linux binary
-
-```bash
-cd BulkCopy
-dotnet publish -c Release -r linux-x64 --self-contained true
-```
-
-The binary will be available at: `bin/Release/net10.0/linux-x64/publish/BulkCopy`
-
 ## Error Logging
 
-When the `--error-database` option is specified, the tool will:
-
-1. Automatically create an error table if it doesn't exist
-2. Log all failed rows to the error table with detailed information
+When the `--error-database` option is specified, the tool will automatically
+create an error table (default name: `BulkCopyErrors`) and insert failed rows
+into it.
 
 ### Error Table Schema
 
