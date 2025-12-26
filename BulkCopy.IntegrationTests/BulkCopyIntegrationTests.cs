@@ -194,14 +194,15 @@ public class BulkCopyIntegrationTests(BulkCopyIntegrationRunFixture fixture)
     private static async Task<int> CountRowsWithSource(SqlConnection connection,
         string tableName,
         string sourceDb,
-        string sourceTable
+        string sourceTable,
+        string schema = "dbo"
     )
     {
         await using var command = new SqlCommand(
             $"SELECT COUNT(*) FROM {tableName} WHERE SourceDatabase = @SourceDb AND SourceTable = @SourceTable;",
             connection);
         command.Parameters.AddWithValue("@SourceDb", sourceDb);
-        command.Parameters.AddWithValue("@SourceTable", sourceTable);
+        command.Parameters.AddWithValue("@SourceTable", $"[{schema}].[{sourceTable}]");
         return (int)(await command.ExecuteScalarAsync() ?? 0);
     }
 

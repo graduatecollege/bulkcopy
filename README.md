@@ -46,6 +46,7 @@ Options:
   - `--trust-server-certificate` Trust server certificate (no env variable).
   - `--timeout <timeout>` Connection timeout in seconds, defaults to 30 (env:BULKCOPY_TIMEOUT).
   - `--database <database>` The destination database name (env:BULKCOPY_DATABASE).
+  - `--schema <schema>` The destination schema name, defaults to "dbo" (env:BULKCOPY_SCHEMA).
   - `--table <table>` The destination table name (env:BULKCOPY_TABLE).
   - `--help` Show help and usage information
   - `--version` Show version information
