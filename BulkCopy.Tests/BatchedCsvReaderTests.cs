@@ -11,6 +11,7 @@ public class BatchedCsvReaderTests
         var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
         var reader = new StreamReader(stream);
         var csvReader = new CsvDataReader(reader, nullValue);
+        csvReader.ReadHeader();
         return new BatchedCsvReader(csvReader, batchSize);
     }
 

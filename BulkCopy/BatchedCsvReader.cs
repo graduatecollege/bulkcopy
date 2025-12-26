@@ -3,24 +3,11 @@ using System.Data;
 namespace BulkCopy;
 
 /// <summary>
-///     Wraps a CsvDataReader to provide batch reading capabilities.
 ///     Reads a limited number of rows at a time to support batch-based error handling.
 /// </summary>
-public class BatchedCsvReader(CsvDataReader csvReader, int batchSize) : IDisposable
+public sealed class BatchedCsvReader(CsvDataReader csvReader, int batchSize) : IDisposable
 {
-    public string[] ColumnNames
-    {
-        get
-        {
-            var names = new string[csvReader.FieldCount];
-            for (var i = 0; i < csvReader.FieldCount; i++)
-            {
-                names[i] = csvReader.GetName(i);
-            }
-
-            return names;
-        }
-    }
+    public string[] ColumnNames => csvReader.ColumnNames;
 
     public bool HasMoreRows { get; private set; } = true;
 
@@ -43,11 +30,9 @@ public class BatchedCsvReader(CsvDataReader csvReader, int batchSize) : IDisposa
         }
 
         var dataTable = new DataTable();
-
-        // Create columns from the CSV reader
-        for (var i = 0; i < csvReader.FieldCount; i++)
+        foreach (var columnName in csvReader.ColumnNames)
         {
-            dataTable.Columns.Add(csvReader.GetName(i));
+            dataTable.Columns.Add(columnName);
         }
 
         var rowsRead = 0;
@@ -75,10 +60,5 @@ public class BatchedCsvReader(CsvDataReader csvReader, int batchSize) : IDisposa
         HasMoreRows = rowsRead == batchSize;
 
         return dataTable;
-    }
-
-    public void Close()
-    {
-        csvReader.Close();
     }
 }
