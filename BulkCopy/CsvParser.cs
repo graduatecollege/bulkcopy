@@ -3,14 +3,37 @@ using System.Text;
 
 namespace BulkCopy;
 
-public class CsvParser
+/// <summary>
+///     Basic streaming CSV parser.
+/// </summary>
+/// <remarks>
+///     This parser expects comma-separated values, with optional quotes (").<br />
+///     The file must be UTF-8 encoded.<br />
+///     By default, "␀" is treated as a null value. This can be overridden by passing a different null character.
+///     If the field is quoted, it will never be treated as a null value.
+/// </remarks>
+public static class CsvParser
 {
+    /// <summary>
+    ///     Reads the entire CSV file into a DataTable. Must have a header row.
+    /// </summary>
+    /// <param name="filePath">Path to the CSV file to be parsed.</param>
+    /// <param name="nullChar">Character to treat as null. Defaults to "␀" (null character).</param>
+    /// <returns>A DataTable containing the parsed CSV data.</returns>
+    /// <exception cref="FormatException">Thrown if the CSV stream is empty or has no header row.</exception>
     public static DataTable LoadCsvToDataTable(string filePath, string? nullChar = "␀")
     {
         using var reader = new StreamReader(filePath, Encoding.UTF8);
         return LoadCsvFromStream(reader, nullChar);
     }
 
+    /// <summary>
+    ///     Reads the CSV data from a StreamReader into a DataTable. Must have a header row.
+    /// </summary>
+    /// <param name="reader">Stream to read CSV data from.</param>
+    /// <param name="nullChar">Character to treat as null. Defaults to "␀" (null character).</param>
+    /// <returns>A DataTable containing the parsed CSV data.</returns>
+    /// <exception cref="FormatException">Thrown if the CSV stream is empty or has no header row.</exception>
     public static DataTable LoadCsvFromStream(StreamReader reader, string? nullChar = "␀")
     {
         var dataTable = new DataTable();
@@ -18,7 +41,7 @@ public class CsvParser
         var firstRow = ReadCsvRow(reader);
         if (string.IsNullOrEmpty(firstRow))
         {
-            throw new InvalidOperationException("CSV file is empty or has no header row.");
+            throw new FormatException("CSV is empty or has no header row.");
         }
 
         var headers = ParseCsvLine(firstRow, nullChar);
@@ -27,7 +50,6 @@ public class CsvParser
             dataTable.Columns.Add(header?.Trim() ?? "");
         }
 
-        // Read data rows
         while (ReadCsvRow(reader) is { } row)
         {
             if (string.IsNullOrWhiteSpace(row))
@@ -48,12 +70,21 @@ public class CsvParser
                 }
             }
 
+            // ReSharper disable once CoVariantArrayConversion
             dataTable.Rows.Add(fields);
         }
 
         return dataTable;
     }
 
+    /// <summary>
+    ///     Reads a single CSV row from a StreamReader.
+    /// </summary>
+    /// <remarks>
+    ///     This method reads the stream until an unquoted newline is encountered.
+    /// </remarks>
+    /// <param name="reader">Stream to read CSV data from.</param>
+    /// <returns>The parsed CSV row as a string, or null if end of stream is reached.</returns>
     public static string? ReadCsvRow(StreamReader reader)
     {
         var row = new StringBuilder();
@@ -69,41 +100,31 @@ public class CsvParser
                 case '"':
                 {
                     row.Append(c);
-                    // Check if this is an escaped quote (double quote)
-                    if (inQuotes && reader.Peek() == '"')
-                    {
-                        // Escaped quote - read the next quote and don't toggle state
-                        row.Append((char)reader.Read());
-                    }
-                    else
-                    {
-                        // Regular quote - toggle the inQuotes state
-                        inQuotes = !inQuotes;
-                    }
+                    // If it's escaped, this gets toggled back
+                    inQuotes = !inQuotes;
 
                     break;
                 }
                 case '\n' when !inQuotes:
                 {
-                    // End of row found (not inside quotes)
-                    // Remove trailing \r if present
-                    if (row.Length > 0 && row[^1] == '\r')
+                    // Skip trailing \r if present
+                    var nextChar = reader.Peek();
+                    if (nextChar == '\r')
                     {
-                        row.Length--;
+                        reader.Read();
                     }
 
                     return row.Length > 0 ? row.ToString() : null;
                 }
                 case '\r' when !inQuotes:
                 {
-                    // Check if next char is \n (Windows line ending)
+                    // Skip trailing \n if present
                     var nextChar = reader.Peek();
                     if (nextChar == '\n')
                     {
-                        reader.Read(); // Consume the \n
+                        reader.Read();
                     }
 
-                    // Return row (handles both Windows \r\n and Mac \r line endings)
                     return row.Length > 0 ? row.ToString() : null;
                 }
                 default:
@@ -116,6 +137,12 @@ public class CsvParser
         return row.Length > 0 ? row.ToString() : null;
     }
 
+    /// <summary>
+    ///     Parses a CSV line into an array of fields.
+    /// </summary>
+    /// <param name="line">The CSV line to parse.</param>
+    /// <param name="nullChar">The character used to represent null values in the CSV line. Defaults to "␀" (null character).</param>
+    /// <returns>An array of fields extracted from the CSV line.</returns>
     public static string?[] ParseCsvLine(string line, string? nullChar = "␀")
     {
         var fields = new List<string?>();
@@ -126,10 +153,8 @@ public class CsvParser
         {
             switch (line[i])
             {
-                case '"' when inQuotes && i + 1 < line.Length && line[i + 1] == '"':
-                    i++; // Escaped quote inside quoted field
-                    break;
                 case '"':
+                    // If it's escaped, this gets toggled back
                     inQuotes = !inQuotes;
                     break;
                 case ',' when !inQuotes:
@@ -145,14 +170,20 @@ public class CsvParser
         return fields.ToArray();
     }
 
+    /// <summary>
+    ///     Extracts a field from a CSV line.
+    /// </summary>
+    /// <param name="line">The CSV line containing the field.</param>
+    /// <param name="start">The starting index of the field within the line.</param>
+    /// <param name="end">The ending index of the field within the line.</param>
+    /// <param name="nullChar">The character used to represent null values in the CSV line. Defaults to "␀" (null character).</param>
+    /// <returns>The extracted field as a string, or null if the field represents a null value.</returns>
     public static string? ExtractField(string line, int start, int end, string? nullChar = "␀")
     {
         var field = line.Substring(start, end - start).Trim();
 
-        // Check if the field is quoted
         var isQuoted = field.StartsWith('"') && field.EndsWith('"') && field.Length >= 2;
 
-        // Remove surrounding quotes if present
         if (isQuoted)
         {
             field = field.Substring(1, field.Length - 2);

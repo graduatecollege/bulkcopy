@@ -33,6 +33,17 @@ public class CsvParserTests
 
         Assert.Equal("Has \"escaped\" quotes", fields[1]);
     }
+    
+    [Fact]
+    public void ParseCsvLine_BlankField_ParsesCorrectly()
+    {
+        var fields = CsvParser.ParseCsvLine("Product A,,10.99");
+
+        Assert.Equal(3, fields.Length);
+        Assert.Equal("Product A", fields[0]);
+        Assert.Equal("", fields[1]);
+        Assert.Equal("10.99", fields[2]);
+    }
 
     [Fact]
     public void ExtractField_SimpleField_ReturnsUnmodified()
@@ -146,7 +157,7 @@ public class CsvParserTests
     public void LoadCsvFromStream_EmptyCsv_ThrowsException()
     {
         using var reader = CreateReader("");
-        Assert.Throws<InvalidOperationException>(() => CsvParser.LoadCsvFromStream(reader));
+        Assert.Throws<FormatException>(() => CsvParser.LoadCsvFromStream(reader));
     }
 
     [Fact]

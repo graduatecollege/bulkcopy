@@ -13,19 +13,27 @@ public class BulkCopyIntegrationTestFixture : IAsyncLifetime
     public const string TestTable = "TestTable";
     public const string ErrorTable = "BulkCopyErrors";
     public static readonly string TestCsvFile = Path.GetFullPath("test_data");
-    public static string RandomTestFileName => TestCsvFile + "-" + Path.GetRandomFileName() + ".csv";
-
+    
     private readonly MsSqlContainer _sqlContainer;
-
+    private List<string> _testFiles = [];
+    
     public BulkCopyIntegrationTestFixture()
     {
         _sqlContainer = new MsSqlBuilder()
             .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
-            .WithCleanUp(false)
+            .WithCleanUp(true)
             .Build();
     }
 
     public string ConnectionString => _sqlContainer.GetConnectionString();
+    
+    public string RandomTestFileName()
+    {
+        var path = TestCsvFile + "-" + Path.GetRandomFileName() + ".csv";
+        _testFiles.Add(path);
+        return path;
+    }
+
     
     public virtual async Task InitializeAsync()
     {
@@ -51,6 +59,7 @@ public class BulkCopyIntegrationTestFixture : IAsyncLifetime
                 { "error-table", ErrorTable },
                 { "trust-server-certificate", "true"}
             });
+        
         if (exitCode != 0)
         {
             throw new Exception($"BulkCopy exited with code {exitCode}. Output: {output}. Error: {error}");
@@ -59,7 +68,7 @@ public class BulkCopyIntegrationTestFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        CleanupTestCsvFile();
+        _testFiles.ForEach(CleanupTestCsvFile);
         await _sqlContainer.DisposeAsync();
     }
 
@@ -159,16 +168,16 @@ public class BulkCopyIntegrationTestFixture : IAsyncLifetime
                          25,Yara Perez,26,62000.00,1,1998-02-02,2024-01-25 14:14:14,84.0,Recent grad,EMPL025
                          """;
 
-        var fileName = RandomTestFileName;
+        var fileName = RandomTestFileName();
         File.WriteAllText(fileName, csvContent);
         return fileName;
     }
 
-    private static void CleanupTestCsvFile()
+    private static void CleanupTestCsvFile(string path)
     {
-        if (File.Exists(TestCsvFile))
+        if (File.Exists(path))
         {
-            File.Delete(TestCsvFile);
+            File.Delete(path);
         }
     }
 
@@ -242,7 +251,11 @@ public class BulkCopyIntegrationTestFixture : IAsyncLifetime
             }
         }
         
-        Console.WriteLine($"Using {bulkCopyPath} with args: {args}");
+        var env = string.Join("\n  ", envVars != null ? envVars.Select(kvp => $"{kvp.Key}={kvp.Value}") : Enumerable.Empty<string>());
+        
+        Console.WriteLine($"Invoking BulkCopy");
+        Console.WriteLine($"Arguments: {args}");
+        Console.WriteLine($"Environment variables: \n  {env}");
 
         var process = new Process
         {

@@ -1,7 +1,6 @@
 ﻿using System.CommandLine;
 using System.CommandLine.Help;
 using System.CommandLine.Invocation;
-using System.CommandLine.Parsing;
 using System.Data;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
@@ -9,9 +8,10 @@ using Microsoft.Data.SqlClient;
 
 namespace BulkCopy;
 
-public class Program
+public partial class Program
 {
-    private static readonly Regex SqlIdentifierRegex = new("^[a-zA-Z_][a-zA-Z0-9_]*$", RegexOptions.Compiled);
+    [GeneratedRegex("^[a-zA-Z_][a-zA-Z0-9_]*$", RegexOptions.Compiled)]
+    private static partial Regex SqlIdentifierRegex();
 
     private static async Task<int> Main(string[] args)
     {
@@ -68,12 +68,7 @@ public class Program
 
         var trustServerCertificateOption = new Option<bool?>("--trust-server-certificate")
         {
-            Description = "Trust server certificate (env:BULKCOPY_TRUST_SERVER_CERTIFICATE).",
-            DefaultValueFactory = result =>
-            {
-                var val = Environment.GetEnvironmentVariable("BULKCOPY_TRUST_SERVER_CERTIFICATE");
-                return val != null && bool.Parse(val);
-            }
+            Description = "Trust server certificate (no env variable)."
         };
 
         var timeoutOption = new Option<int?>("--timeout")
@@ -213,8 +208,7 @@ public class Program
 
             return exitCode;
         });
-
-
+        
         var parseResult = rootCommand.Parse(args);
 
         return await parseResult.InvokeAsync();
@@ -286,7 +280,7 @@ public class Program
 
             bulkCopyStopwatch.Stop();
             Console.WriteLine(
-                $"Bulk copy took {bulkCopyStopwatch.Elapsed.TotalSeconds:F2}s ({bulkCopyStopwatch.ElapsedMilliseconds}ms).");
+                $"Bulk copy took {bulkCopyStopwatch.ElapsedMilliseconds}ms.");
             Console.WriteLine(
                 $"Import completed: successes={result.SuccessCount} errors={result.FailedCount}");
             return 0;
@@ -336,6 +330,7 @@ public class Program
             using (var csvReader = new CsvDataReader(csvFilePath, nullChar))
             using (var batchedReader = new BatchedCsvReader(csvReader, batchSize))
             {
+                csvReader.ReadHeader();
                 // Get CSV headers for error logging
                 var csvHeaders = string.Join(",", batchedReader.ColumnNames);
 
@@ -451,19 +446,20 @@ public class Program
         var sanitizedDatabase = SanitizeSqlIdentifier(errorDatabase);
         var sanitizedTable = SanitizeSqlIdentifier(errorTable);
 
-        var createTableSql = $@"
-            IF NOT EXISTS (SELECT * FROM [{sanitizedDatabase}].sys.tables WHERE name = @TableName)
-            BEGIN
-                CREATE TABLE [{sanitizedDatabase}].[dbo].[{sanitizedTable}] (
-                    [Id] INT IDENTITY(1,1) PRIMARY KEY,
-                    [SourceDatabase] NVARCHAR(128) NOT NULL,
-                    [SourceTable] NVARCHAR(128) NOT NULL,
-                    [RowNumber] INT NOT NULL,
-                    [CsvRowData] NVARCHAR(MAX) NOT NULL,
-                    [ErrorMessage] NVARCHAR(MAX) NOT NULL,
-                    [ErrorTimestamp] DATETIME2 NOT NULL DEFAULT GETDATE()
-                );
-            END";
+        var createTableSql = $"""
+                              IF OBJECT_ID(N'[dbo].[{sanitizedTable}]', 'U') IS NULL
+                              BEGIN
+                                  CREATE TABLE [{sanitizedDatabase}].[dbo].[{sanitizedTable}] (
+                                      [Id] INT IDENTITY PRIMARY KEY,
+                                      [SourceDatabase] NVARCHAR(128) NOT NULL,
+                                      [SourceTable] NVARCHAR(128) NOT NULL,
+                                      [RowNumber] INT NOT NULL,
+                                      [CsvRowData] NVARCHAR(MAX) NOT NULL,
+                                      [ErrorMessage] NVARCHAR(MAX) NOT NULL,
+                                      [ErrorTimestamp] DATETIME2 NOT NULL DEFAULT SYSDATETIME()
+                                  );
+                              END
+                              """;
 
         using (var command = new SqlCommand(createTableSql, connection))
         {
@@ -489,11 +485,12 @@ public class Program
         var sanitizedDatabase = SanitizeSqlIdentifier(errorDatabase);
         var sanitizedTable = SanitizeSqlIdentifier(errorTable);
 
-        var insertSql = $@"
-            INSERT INTO [{sanitizedDatabase}].[dbo].[{sanitizedTable}] 
-                ([SourceDatabase], [SourceTable], [RowNumber], [CsvRowData], [ErrorMessage], [ErrorTimestamp])
-            VALUES 
-                (@SourceDatabase, @SourceTable, @RowNumber, @CsvRowData, @ErrorMessage, GETDATE())";
+        var insertSql = $"""
+                         INSERT INTO [{sanitizedDatabase}].[dbo].[{sanitizedTable}] 
+                             ([SourceDatabase], [SourceTable], [RowNumber], [CsvRowData], [ErrorMessage], [ErrorTimestamp])
+                         VALUES 
+                             (@SourceDatabase, @SourceTable, @RowNumber, @CsvRowData, @ErrorMessage, GETDATE())
+                         """;
 
         try
         {
@@ -535,8 +532,6 @@ public class Program
 
     public static string SanitizeSqlIdentifier(string identifier)
     {
-        // SQL identifiers can contain alphanumeric characters, underscores, and must start with a letter or underscore
-        // Remove any characters that are not allowed and escape any square brackets
         if (string.IsNullOrWhiteSpace(identifier))
         {
             throw new ArgumentException("SQL identifier cannot be null or empty", nameof(identifier));
@@ -545,8 +540,7 @@ public class Program
         // Remove any existing square brackets to prevent injection
         var sanitized = identifier.Replace("[", "").Replace("]", "");
 
-        // Validate that identifier contains only safe characters
-        if (!SqlIdentifierRegex.IsMatch(sanitized))
+        if (!SqlIdentifierRegex().IsMatch(sanitized))
         {
             throw new ArgumentException(
                 $"Invalid SQL identifier: '{identifier}'. Identifiers must start with a letter or underscore and contain only alphanumeric characters and underscores.",
@@ -557,26 +551,22 @@ public class Program
     }
 }
 
-internal class CustomHelpAction : SynchronousCommandLineAction
+class CustomHelpAction(HelpAction action) : SynchronousCommandLineAction
 {
-    private readonly HelpAction _defaultHelp;
-
-    public CustomHelpAction(HelpAction action) => _defaultHelp = action;
-
     public override int Invoke(ParseResult parseResult)
     {
-        int result = _defaultHelp.Invoke(parseResult);
+        int result = action.Invoke(parseResult);
 
         Console.WriteLine("""
                           Examples:
                             
                             Bulk copy csv-file.csv to table MyTable in database MyDB on localhost
                             
-                              ./BulkCopy csv-file.csv --connection-string "Server=127.0.0.1,56791;Database=MyDB;User Id=sa;Password=password;TrustServerCertificate=True" --table MyTable
+                              ./BulkCopy csv-file.csv --connection-string "Server=127.0.0.1,1433;Database=MyDB;User Id=sa;Password=password;TrustServerCertificate=True" --table MyTable
                               
                             Log errors into ErrorDB.dbo.BulkCopyErrors as well
                             
-                              ./BulkCopy csv-file.csv --connection-string "Server=127.0.0.1,56791;Database=MyDB;User Id=sa;Password=password;TrustServerCertificate=True" --table MyTable --error-database ErrorDB
+                              ./BulkCopy csv-file.csv --connection-string "Server=127.0.0.1,1433;Database=MyDB;User Id=sa;Password=password;TrustServerCertificate=True" --table MyTable --error-database ErrorDB
                               
                           """);
 

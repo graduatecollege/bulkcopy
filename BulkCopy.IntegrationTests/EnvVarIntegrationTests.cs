@@ -96,8 +96,8 @@ public sealed class EnvVarIntegrationTests(BulkCopyIntegrationTestFixture fixtur
             new()
             {
                 { "trust-server-certificate", "true" }
-            }
-            , envVars);
+            },
+            envVars);
 
         if (exitCode != 0 || !output.Contains("successes=19"))
         {
@@ -123,12 +123,11 @@ public sealed class EnvVarIntegrationTests(BulkCopyIntegrationTestFixture fixtur
 
         // Call and check if batch size 5 is used (should see more batch messages)
         var (exitCode, output, error) = await fixture.RunBulkCopyAndGetOutput(path,
-            new ()
+            new()
             {
-                
                 { "trust-server-certificate", "true" }
-            }
-            , envVars);
+            },
+            envVars);
 
         // Batch 1 (1-5) succeeds, Batch 2 (6-10) fails because of bad row 6.
         if (exitCode != 0 || !output.Contains("Batch succeeded: rows 1 to 5") ||
@@ -170,6 +169,11 @@ public sealed class EnvVarIntegrationTests(BulkCopyIntegrationTestFixture fixtur
     private async Task<int> GetRowCount(SqlConnection connection, string tableName)
     {
         await using var command = new SqlCommand($"SELECT COUNT(*) FROM {tableName}", connection);
-        return (int)await command.ExecuteScalarAsync();
+        var value = await command.ExecuteScalarAsync();
+        if (value is int count)
+        {
+            return count;
+        }
+        throw new InvalidCastException($"Cannot convert {value} to int.");
     }
 }

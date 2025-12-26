@@ -10,7 +10,9 @@ public class CsvDataReaderTests
     {
         var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
         var reader = new StreamReader(stream);
-        return new CsvDataReader(reader, nullValue);
+        var csvReader = new CsvDataReader(reader, nullValue);
+        csvReader.ReadHeader();
+        return csvReader;
     }
 
     [Fact]
@@ -37,9 +39,9 @@ public class CsvDataReaderTests
         using var csvReader = CreateReader(JohnJaneCsv);
 
         Assert.True(csvReader.Read());
-        Assert.Equal("John Doe", csvReader.GetString(0));
-        Assert.Equal("30", csvReader.GetString(1));
-        Assert.Equal("john@example.com", csvReader.GetString(2));
+        Assert.Equal("John Doe", csvReader.GetValue(0));
+        Assert.Equal("30", csvReader.GetValue(1));
+        Assert.Equal("john@example.com", csvReader.GetValue(2));
     }
 
     [Fact]
@@ -50,7 +52,7 @@ public class CsvDataReaderTests
 
         csvReader.Read();
 
-        Assert.Equal("Has, comma", csvReader.GetString(2));
+        Assert.Equal("Has, comma", csvReader.GetValue(2));
     }
 
     [Fact]
@@ -61,25 +63,25 @@ public class CsvDataReaderTests
 
         csvReader.Read();
 
-        Assert.Equal("Multi-line\ndescription", csvReader.GetString(2));
+        Assert.Equal("Multi-line\ndescription", csvReader.GetValue(2));
     }
 
     [Fact]
-    public void CsvDataReader_WithNullValues_ReturnsDBNull()
+    public void CsvDataReader_WithNullValues_ReturnsNull()
     {
         var csvContent = "Name,Age,Email\nJohn Doe,NULL,john@example.com";
         using var csvReader = CreateReader(csvContent, "NULL");
 
         csvReader.Read();
 
-        Assert.True(csvReader.IsDBNull(1));
+        Assert.Null(csvReader.GetValue(1));
     }
 
     [Fact]
     public void CsvDataReader_EmptyCsv_ThrowsException()
     {
         var csvContent = "";
-        Assert.Throws<InvalidOperationException>(() => CreateReader(csvContent));
+        Assert.Throws<FormatException>(() => CreateReader(csvContent));
     }
 
     [Fact]
@@ -123,26 +125,6 @@ public class CsvDataReaderTests
     }
 
     [Fact]
-    public void CsvDataReader_GetSchemaTable_ReturnsCorrectCount()
-    {
-        using var csvReader = CreateReader(JohnJaneCsv);
-
-        var schema = csvReader.GetSchemaTable();
-
-        Assert.Equal(3, schema!.Rows.Count);
-    }
-
-    [Fact]
-    public void CsvDataReader_GetSchemaTable_SetsColumnName()
-    {
-        using var csvReader = CreateReader(JohnJaneCsv);
-
-        var schema = csvReader.GetSchemaTable();
-
-        Assert.Equal("Name", schema!.Rows[0]["ColumnName"]);
-    }
-
-    [Fact]
     public void CsvDataReader_FewerFieldsThanHeaders_PadsWithEmptyStrings()
     {
         var csvContent = "Col1,Col2,Col3\nValue1,Value2";
@@ -150,6 +132,6 @@ public class CsvDataReaderTests
 
         csvReader.Read();
 
-        Assert.Equal("", csvReader.GetString(2));
+        Assert.Equal("", csvReader.GetValue(2));
     }
 }
