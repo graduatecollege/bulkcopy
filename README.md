@@ -49,7 +49,6 @@ Options:
   - `--table <table>` The destination table name (env:BULKCOPY_TABLE).
   - `--help` Show help and usage information
   - `--version` Show version information
-```
 
 ### Example
 
