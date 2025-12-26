@@ -156,10 +156,10 @@ public class ProgramTests
         File.WriteAllText(filename, expected);
         try
         {
-            var result = Program.ResolveConnectionString("./" + filename);
+            var result = Program.ResolveConnectionString(Path.Join(".", filename));
             Assert.Equal(expected, result);
             
-            result = Program.ResolveConnectionString(".\\" + filename);
+            result = Program.ResolveConnectionString(Path.Join(".", filename));
             Assert.Equal(expected, result);
         }
         finally
@@ -171,7 +171,7 @@ public class ProgramTests
     [Fact]
     public void ResolveConnectionString_NonExistentFilePath_ThrowsException()
     {
-        var input = "./non-existent-file.txt";
+        var input = Path.Join(".", "nonexistent.txt");
         Assert.Throws<ArgumentException>(() => Program.ResolveConnectionString(input));
     }
 }
