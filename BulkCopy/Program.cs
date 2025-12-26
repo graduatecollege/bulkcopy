@@ -59,6 +59,12 @@ public partial class Program
             Description = "The destination database name (env:BULKCOPY_DATABASE).",
             DefaultValueFactory = result => Environment.GetEnvironmentVariable("BULKCOPY_DATABASE")
         };
+        
+        var schemaOption = new Option<string>("--schema")
+        {
+            Description = "The destination schema name (env:BULKCOPY_SCHEMA).",
+            DefaultValueFactory = result => Environment.GetEnvironmentVariable("BULKCOPY_SCHEMA") ?? "dbo"
+        };
 
         var tableOption = new Option<string?>("--table")
         {
@@ -113,6 +119,7 @@ public partial class Program
             trustServerCertificateOption,
             timeoutOption,
             databaseOption,
+            schemaOption,
             tableOption
         };
 
@@ -137,6 +144,7 @@ public partial class Program
             var username = parseResult.GetValue(usernameOption);
             var password = parseResult.GetValue(passwordOption);
             var database = parseResult.GetValue(databaseOption);
+            var schema = parseResult.GetRequiredValue(schemaOption);
             var table = parseResult.GetValue(tableOption);
             var trustServerCertificate = parseResult.GetValue(trustServerCertificateOption);
             var timeout = parseResult.GetValue(timeoutOption);
@@ -199,7 +207,8 @@ public partial class Program
             var exitCode = ExecuteBulkCopy(
                 csvFile,
                 connectionString,
-                table,
+                SanitizeSqlIdentifier(schema),
+                SanitizeSqlIdentifier(table),
                 batchSize,
                 errorDatabase,
                 errorTable,
@@ -238,6 +247,7 @@ public partial class Program
 
     private static int ExecuteBulkCopy(string csvFilePath,
         string connectionString,
+        string schema,
         string destinationTable,
         int batchSize,
         string? errorDatabase,
@@ -253,7 +263,7 @@ public partial class Program
                 return 1;
             }
 
-            Console.WriteLine($"Starting bulk copy from {csvFilePath} to {destinationTable}...");
+            Console.WriteLine($"Starting bulk copy from {csvFilePath} to {schema}.{destinationTable}...");
             if (errorDatabase != null)
             {
                 Console.WriteLine($"Error logging enabled: {errorDatabase}.{errorTable}");
@@ -271,6 +281,7 @@ public partial class Program
             var bulkCopyStopwatch = Stopwatch.StartNew();
 
             var result = BulkCopyToSqlServerStreaming(connectionString,
+                schema,
                 destinationTable,
                 csvFilePath,
                 batchSize,
@@ -304,6 +315,7 @@ public partial class Program
 
     private static (int SuccessCount, int FailedCount) BulkCopyToSqlServerStreaming(
         string connectionString,
+        string schema,
         string destinationTable,
         string csvFilePath,
         int batchSize,
@@ -346,6 +358,7 @@ public partial class Program
 
                     var result = ProcessBatchWithErrorHandling(
                         connection,
+                        schema,
                         destinationTable,
                         batchTable,
                         batchStartRow,
@@ -365,6 +378,7 @@ public partial class Program
 
     private static (int SuccessCount, int FailedCount) ProcessBatchWithErrorHandling(
         SqlConnection connection,
+        string schema,
         string destinationTable,
         DataTable batchTable,
         int batchStartRow,
@@ -377,12 +391,13 @@ public partial class Program
         var successCount = 0;
         var failedCount = 0;
         var rowsInBatch = batchTable.Rows.Count;
+        var destination = $"[{schema}].[{destinationTable}]";
 
         try
         {
             // Try to insert the batch
             using var bulkCopy = new SqlBulkCopy(connection);
-            bulkCopy.DestinationTableName = destinationTable;
+            bulkCopy.DestinationTableName = destination;
             bulkCopy.BatchSize = rowsInBatch;
             bulkCopy.BulkCopyTimeout = 30;
 
@@ -407,7 +422,7 @@ public partial class Program
                 try
                 {
                     using var bulkCopy = new SqlBulkCopy(connection);
-                    bulkCopy.DestinationTableName = destinationTable;
+                    bulkCopy.DestinationTableName = destination;
                     bulkCopy.BatchSize = 1;
                     bulkCopy.BulkCopyTimeout = 30;
 
@@ -428,7 +443,7 @@ public partial class Program
                             errorDatabase,
                             errorTable,
                             destinationDatabase,
-                            destinationTable,
+                            destination,
                             rowNumber,
                             csvHeaders,
                             csvRowData,
