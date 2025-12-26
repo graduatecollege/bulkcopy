@@ -1,5 +1,6 @@
 using System.Data;
 using System.Diagnostics.CodeAnalysis;
+using System.IO.Compression;
 using System.Text;
 
 namespace BulkCopy;
@@ -14,8 +15,22 @@ public sealed class CsvDataReader(StreamReader reader, string? nullChar = "␀")
     private string?[]? _currentRow;
 
     public CsvDataReader(string filePath, string? nullChar = "␀")
-        : this(new StreamReader(filePath, Encoding.UTF8), nullChar)
+        : this(OpenFileAsStreamReader(filePath), nullChar)
     {
+    }
+
+    private static StreamReader OpenFileAsStreamReader(string filePath)
+    {
+        var fileStream = File.OpenRead(filePath);
+
+        if (filePath.EndsWith(".gz", StringComparison.OrdinalIgnoreCase) ||
+            filePath.EndsWith(".gzip", StringComparison.OrdinalIgnoreCase))
+        {
+            var gzipStream = new GZipStream(fileStream, CompressionMode.Decompress);
+            return new StreamReader(gzipStream, Encoding.UTF8);
+        }
+
+        return new StreamReader(fileStream, Encoding.UTF8);
     }
 
     public int FieldCount => !_headerRead ? throw new InvalidOperationException("Header must be read before accessing field count.") : _columnNames.Length;
