@@ -169,10 +169,9 @@ public class ProgramTests
     }
 
     [Fact]
-    public void ResolveConnectionString_NonExistentFilePath_ReturnsInput()
+    public void ResolveConnectionString_NonExistentFilePath_ThrowsException()
     {
         var input = "./non-existent-file.txt";
-        var result = Program.ResolveConnectionString(input);
-        Assert.Equal(input, result);
+        Assert.Throws<ArgumentException>(() => Program.ResolveConnectionString(input));
     }
 }

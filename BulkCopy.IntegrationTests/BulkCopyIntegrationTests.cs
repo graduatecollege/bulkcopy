@@ -2,8 +2,8 @@ using Microsoft.Data.SqlClient;
 
 namespace BulkCopy.IntegrationTests;
 
-public sealed class BulkCopyIntegrationTests(BulkCopyIntegrationTestFixture fixture)
-    : IClassFixture<BulkCopyIntegrationTestFixture>
+public class BulkCopyIntegrationTests(BulkCopyIntegrationRunFixture fixture)
+    : IClassFixture<BulkCopyIntegrationRunFixture>
 {
     [Fact]
     public async Task BulkCopy_InsertsExpectedNumberOfValidRows()

@@ -6,13 +6,14 @@ using static System.Runtime.InteropServices.RuntimeInformation;
 
 namespace BulkCopy.IntegrationTests;
 
-public sealed class BulkCopyIntegrationTestFixture : IAsyncLifetime
+public class BulkCopyIntegrationTestFixture : IAsyncLifetime
 {
     public const string TestDatabase = "TestDB";
     public const string ErrorDatabase = "ErrorLogDB";
     public const string TestTable = "TestTable";
     public const string ErrorTable = "BulkCopyErrors";
-    public const string TestCsvFile = "test_data.csv";
+    public static readonly string TestCsvFile = Path.GetFullPath("test_data");
+    public static string RandomTestFileName => TestCsvFile + "-" + Path.GetRandomFileName() + ".csv";
 
     private readonly MsSqlContainer _sqlContainer;
 
@@ -25,21 +26,34 @@ public sealed class BulkCopyIntegrationTestFixture : IAsyncLifetime
     }
 
     public string ConnectionString => _sqlContainer.GetConnectionString();
-
-    public async Task InitializeAsync()
+    
+    public virtual async Task InitializeAsync()
     {
         await _sqlContainer.StartAsync();
-        Console.WriteLine(_sqlContainer.GetConnectionString());
-
+        Console.WriteLine("Connection string: " + _sqlContainer.GetConnectionString());
         await CreateTestDatabaseAndTable();
         await CreateErrorDatabase();
-        CreateTestCsvFile();
+    }
+
+    public async Task RunBulkCopy()
+    {
+        var path = CreateTestCsvFile();
 
         await BuildApplication();
-        var exitCode = await RunBulkCopy(ConnectionString);
+        var (exitCode, output, error) = await RunBulkCopyAndGetOutput(path,
+            new()
+            {
+                { "database", TestDatabase },
+                { "connection-string", ConnectionString },
+                { "table", TestTable },
+                { "batch-size", "10" },
+                { "error-database", ErrorDatabase },
+                { "error-table", ErrorTable },
+                { "trust-server-certificate", "true"}
+            });
         if (exitCode != 0)
         {
-            throw new Exception($"BulkCopy exited with code {exitCode}");
+            throw new Exception($"BulkCopy exited with code {exitCode}. Output: {output}. Error: {error}");
         }
     }
 
@@ -72,17 +86,23 @@ public sealed class BulkCopyIntegrationTestFixture : IAsyncLifetime
         return connection;
     }
 
-    private async Task CreateTestDatabaseAndTable()
+    private async Task CreateTestDatabaseAndTable(string testTableName = TestTable)
     {
         await using var connection = await OpenConnectionWithConnectionStringAsync(ConnectionString);
 
         await using var createDbCommand = new SqlCommand($"CREATE DATABASE {TestDatabase};", connection);
         await createDbCommand.ExecuteNonQueryAsync();
 
+        await CreateTestTable(testTableName);
+    }
+
+    public async Task CreateTestTable(string testTableName = TestTable)
+    {
+        await using var connection = await OpenConnectionWithConnectionStringAsync(ConnectionString);
         await connection.ChangeDatabaseAsync(TestDatabase);
         await using var createTableCommand = new SqlCommand(
             $"""
-             CREATE TABLE {TestTable} (
+             CREATE TABLE {testTableName} (
                  ID INT,
                  Name NVARCHAR(100),
                  Age INT,
@@ -107,7 +127,7 @@ public sealed class BulkCopyIntegrationTestFixture : IAsyncLifetime
         await createDbCommand.ExecuteNonQueryAsync();
     }
 
-    private static void CreateTestCsvFile()
+    public string CreateTestCsvFile()
     {
         var csvContent = """
                          ID,Name,Age,Salary,IsActive,BirthDate,CreatedAt,Score,Description,Code
@@ -139,7 +159,9 @@ public sealed class BulkCopyIntegrationTestFixture : IAsyncLifetime
                          25,Yara Perez,26,62000.00,1,1998-02-02,2024-01-25 14:14:14,84.0,Recent grad,EMPL025
                          """;
 
-        File.WriteAllText(TestCsvFile, csvContent);
+        var fileName = RandomTestFileName;
+        File.WriteAllText(fileName, csvContent);
+        return fileName;
     }
 
     private static void CleanupTestCsvFile()
@@ -178,9 +200,12 @@ public sealed class BulkCopyIntegrationTestFixture : IAsyncLifetime
         }
     }
 
-    private static async Task<int> RunBulkCopy(string connectionString)
+    public async Task<(int ExitCode, string Output, string Error)> RunBulkCopyAndGetOutput(string path,
+        Dictionary<string, string>? bcArgs,
+        Dictionary<string, string>? envVars = null,
+        string? additionalArgs = null
+    )
     {
-        var fullConnectionString = $"{connectionString};Database={TestDatabase}";
         var projectDir = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", "BulkCopy");
 
         var rid = IsOSPlatform(Windows)
@@ -200,13 +225,31 @@ public sealed class BulkCopyIntegrationTestFixture : IAsyncLifetime
             bulkCopyPath += ".exe";
         }
 
+        var args = $"\"{path}\"";
+
+        if (bcArgs != null)
+        {
+            foreach (var (key, value) in bcArgs)
+            {
+                if (value != "true")
+                {
+                    args += $" --{key} \"{value}\"";
+                }
+                else
+                {
+                    args += $" --{key}";
+                }
+            }
+        }
+        
+        Console.WriteLine($"Using {bulkCopyPath} with args: {args}");
+
         var process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
                 FileName = bulkCopyPath,
-                Arguments =
-                    $"{TestCsvFile} \"{fullConnectionString}\" {TestTable} 10 --error-database {ErrorDatabase} --error-table {ErrorTable}",
+                Arguments = args,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -214,19 +257,19 @@ public sealed class BulkCopyIntegrationTestFixture : IAsyncLifetime
             }
         };
 
+        if (envVars != null)
+        {
+            foreach (var kvp in envVars)
+            {
+                process.StartInfo.EnvironmentVariables[kvp.Key] = kvp.Value;
+            }
+        }
+
         process.Start();
         var output = await process.StandardOutput.ReadToEndAsync();
         var error = await process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync();
 
-        Console.WriteLine("BulkCopy Output:");
-        Console.WriteLine(output);
-        if (!string.IsNullOrEmpty(error))
-        {
-            Console.WriteLine("BulkCopy Errors:");
-            Console.WriteLine(error);
-        }
-
-        return process.ExitCode;
+        return (process.ExitCode, output, error);
     }
 }
