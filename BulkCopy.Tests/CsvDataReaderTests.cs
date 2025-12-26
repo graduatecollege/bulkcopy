@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text;
 
 namespace BulkCopy.Tests;
@@ -13,6 +14,18 @@ public class CsvDataReaderTests
         var csvReader = new CsvDataReader(reader, nullValue);
         csvReader.ReadHeader();
         return csvReader;
+    }
+
+    private static string CreateTempGzipFile(string csvContent, string extension)
+    {
+        var filePath = Path.Combine(Path.GetTempPath(), $"bulkcopy_{Guid.NewGuid():N}.csv{extension}");
+
+        using var fileStream = File.Open(filePath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        using var gzipStream = new GZipStream(fileStream, CompressionLevel.SmallestSize);
+        using var writer = new StreamWriter(gzipStream, Encoding.UTF8);
+        writer.Write(csvContent);
+
+        return filePath;
     }
 
     [Fact]
@@ -133,5 +146,28 @@ public class CsvDataReaderTests
         csvReader.Read();
 
         Assert.Equal("", csvReader.GetValue(2));
+    }
+
+    [Theory]
+    [InlineData(".gz")]
+    [InlineData(".gzip")]
+    public void CsvDataReader_PathConstructor_LoadsGzippedCsv(string extension)
+    {
+        var filePath = CreateTempGzipFile(JohnJaneCsv, extension);
+        try
+        {
+            using var csvReader = new CsvDataReader(filePath);
+            csvReader.ReadHeader();
+
+            Assert.Equal(3, csvReader.FieldCount);
+            Assert.True(csvReader.Read());
+            Assert.Equal("John Doe", csvReader.GetValue(0));
+            Assert.Equal("30", csvReader.GetValue(1));
+            Assert.Equal("john@example.com", csvReader.GetValue(2));
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
     }
 }
