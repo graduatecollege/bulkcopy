@@ -48,6 +48,7 @@ Options:
   - `--database <database>` The destination database name (env:BULKCOPY_DATABASE).
   - `--schema <schema>` The destination schema name, defaults to "dbo" (env:BULKCOPY_SCHEMA).
   - `--table <table>` The destination table name (env:BULKCOPY_TABLE).
+  - `--empty` Empty the destination table before importing (no env variable).
   - `--help` Show help and usage information
   - `--version` Show version information
 

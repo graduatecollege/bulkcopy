@@ -21,7 +21,7 @@ public class BulkCopyIntegrationTestFixture : IAsyncLifetime
     {
         _sqlContainer = new MsSqlBuilder()
             .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
-            .WithCleanUp(true)
+            .WithCleanUp(false)
             .Build();
     }
 
