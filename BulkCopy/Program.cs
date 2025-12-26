@@ -76,6 +76,11 @@ public partial class Program
         {
             Description = "Trust server certificate (no env variable)."
         };
+        
+        var emptyOption = new Option<bool?>("--empty")
+        {
+            Description = "Empty the destination table before importing (no env variable)."
+        };
 
         var timeoutOption = new Option<int?>("--timeout")
         {
@@ -117,6 +122,7 @@ public partial class Program
             usernameOption,
             passwordOption,
             trustServerCertificateOption,
+            emptyOption,
             timeoutOption,
             databaseOption,
             schemaOption,
@@ -134,7 +140,7 @@ public partial class Program
             break;
         }
 
-        rootCommand.SetAction(parseResult =>
+        rootCommand.SetAction(async parseResult =>
         {
             var csvFile = parseResult.GetRequiredValue(csvFileArgument);
 
@@ -147,6 +153,7 @@ public partial class Program
             var schema = parseResult.GetRequiredValue(schemaOption);
             var table = parseResult.GetValue(tableOption);
             var trustServerCertificate = parseResult.GetValue(trustServerCertificateOption);
+            var empty = parseResult.GetValue(emptyOption);
             var timeout = parseResult.GetValue(timeoutOption);
             var errorDatabase = parseResult.GetValue(errorDatabaseOption);
             var errorTable = parseResult.GetRequiredValue(errorTableOption);
@@ -202,6 +209,11 @@ public partial class Program
             {
                 Console.WriteLine("Error: Table name must be provided via --table option or BULKCOPY_TABLE.");
                 return 1;
+            }
+
+            if (empty.HasValue && empty.Value)
+            {
+                await EmptyTable(new SqlConnection(connectionString), database ?? sqlBuilder.InitialCatalog, schema, table);
             }
 
             var exitCode = ExecuteBulkCopy(
@@ -454,6 +466,13 @@ public partial class Program
         }
 
         return (successCount, failedCount);
+    }
+
+    private static async Task EmptyTable(SqlConnection connection, string database, string schema, string table)
+    {
+        var destination = $"[{database}].[{schema}].[{table}]";
+        await using var command = new SqlCommand($"DELETE FROM {destination}", connection);
+        await command.ExecuteNonQueryAsync();
     }
 
     private static void EnsureErrorTableExists(SqlConnection connection, string errorDatabase, string errorTable)
