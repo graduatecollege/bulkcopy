@@ -1,12 +1,13 @@
 ﻿using Microsoft.Data.SqlClient;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using BulkCopy.IntegrationTests.Fixtures;
 using Xunit;
 
 namespace BulkCopy.IntegrationTests;
 
-public sealed class EmptyIntegrationTests(BulkCopyIntegrationTestFixture fixture)
-    : IClassFixture<BulkCopyIntegrationTestFixture>
+public sealed class EmptyIntegrationTests(TestFixture fixture)
+    : IClassFixture<TestFixture>
 {
 
     [Fact]
@@ -16,7 +17,7 @@ public sealed class EmptyIntegrationTests(BulkCopyIntegrationTestFixture fixture
         await fixture.CreateTestTable(tableName);
         var path = fixture.CreateTestCsvFile();
 
-        var fullConnectionString = $"{fixture.ConnectionString};Database={BulkCopyIntegrationTestFixture.TestDatabase}";
+        var fullConnectionString = $"{fixture.ConnectionString};Database={TestFixture.TestDatabase}";
 
         var envVars = new Dictionary<string, string>
         {
@@ -54,7 +55,7 @@ public sealed class EmptyIntegrationTests(BulkCopyIntegrationTestFixture fixture
         var tableName = "DoNotEmpty";
         await fixture.CreateTestTable(tableName);
         var path = fixture.CreateTestCsvFile();
-        var fullConnectionString = $"{fixture.ConnectionString};Database={BulkCopyIntegrationTestFixture.TestDatabase}";
+        var fullConnectionString = $"{fixture.ConnectionString};Database={TestFixture.TestDatabase}";
         var envVars = new Dictionary<string, string>
         {
             { "BULKCOPY_CONNECTION_STRING", fullConnectionString }

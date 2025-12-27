@@ -35,22 +35,22 @@ Arguments:
 - `<csv-file>` The CSV file to import.
 
 Options:
-  - `--connection-string <connection-string>` The SQL Server connection string (env:BULKCOPY_CONNECTION_STRING).
-  - `--batch-size <batch-size>` The number of rows to insert per batch, default 500 (env:BULKCOPY_BATCH_SIZE).
-  - `--error-database <error-database>` Optional database name for error logging on the same server (env:BULKCOPY_ERROR_DATABASE).
-  - `--error-table <error-table>` Optional table name for error logging, defaults to BulkCopyErrors (env:BULKCOPY_ERROR_TABLE).
-  - `--null-char <null-char>` Optional character to treat as null when unquoted, defaults to "␀" (env:BULKCOPY_NULL_CHAR).
-  - `--server <server>` The destination SQL Server instance name (env:BULKCOPY_DB_SERVER).
-  - `--username <username>` The SQL Server username (env:BULKCOPY_USERNAME).
-  - `--password <password>` The SQL Server password (env:BULKCOPY_PASSWORD).
-  - `--trust-server-certificate` Trust server certificate (no env variable).
-  - `--timeout <timeout>` Connection timeout in seconds, defaults to 30 (env:BULKCOPY_TIMEOUT).
-  - `--database <database>` The destination database name (env:BULKCOPY_DATABASE).
-  - `--schema <schema>` The destination schema name, defaults to "dbo" (env:BULKCOPY_SCHEMA).
-  - `--table <table>` The destination table name (env:BULKCOPY_TABLE).
-  - `--empty` Empty the destination table before importing (no env variable).
-  - `--help` Show help and usage information
-  - `--version` Show version information
+-  `--connection-string <connection-string>` The SQL Server connection string (env:BULKCOPY_CONNECTION_STRING).
+-  `--batch-size <batch-size>` The number of rows to insert per batch, default 2000 (env:BULKCOPY_BATCH_SIZE).
+-  `--error-database <error-database>` Optional database name for error logging on the same server (env:BULKCOPY_ERROR_DATABASE).
+-  `--error-table <error-table>` Optional table name for error logging, defaults to BulkCopyErrors (env:BULKCOPY_ERROR_TABLE).
+-  `--null-char <null-char>` Optional character to treat as null when unquoted, defaults to "␀" (env:BULKCOPY_NULL_CHAR).
+-  `--server <server>` The destination SQL Server instance name (env:BULKCOPY_DB_SERVER).
+-  `--username <username>` The SQL Server username (env:BULKCOPY_USERNAME).
+-  `--password <password>` The SQL Server password (env:BULKCOPY_PASSWORD).
+-  `--trust-server-certificate` Trust server certificate (no env variable).
+-  `--empty` Empty the destination table before importing (no env variable).
+-  `--timeout <timeout>` Connection timeout in seconds, defaults to 30 (env:BULKCOPY_TIMEOUT).
+-  `--database <database>` The destination database name (env:BULKCOPY_DATABASE).
+-  `--schema <schema>` The destination schema name (env:BULKCOPY_SCHEMA).
+-  `--table <table>` The destination table name (env:BULKCOPY_TABLE).
+-  `-?, -h, --help` Show help and usage information
+-  `--version` Show version information
 
 ### Example
 

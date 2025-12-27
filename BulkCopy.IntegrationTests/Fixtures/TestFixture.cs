@@ -4,9 +4,9 @@ using Testcontainers.MsSql;
 using static System.Runtime.InteropServices.OSPlatform;
 using static System.Runtime.InteropServices.RuntimeInformation;
 
-namespace BulkCopy.IntegrationTests;
+namespace BulkCopy.IntegrationTests.Fixtures;
 
-public class BulkCopyIntegrationTestFixture : IAsyncLifetime
+public class TestFixture : IAsyncLifetime
 {
     public const string TestDatabase = "TestDB";
     public const string ErrorDatabase = "ErrorLogDB";
@@ -17,11 +17,11 @@ public class BulkCopyIntegrationTestFixture : IAsyncLifetime
     private readonly MsSqlContainer _sqlContainer;
     private List<string> _testFiles = [];
     
-    public BulkCopyIntegrationTestFixture()
+    public TestFixture()
     {
         _sqlContainer = new MsSqlBuilder()
             .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
-            .WithCleanUp(false)
+            .WithCleanUp(true)
             .Build();
     }
 
@@ -43,9 +43,9 @@ public class BulkCopyIntegrationTestFixture : IAsyncLifetime
         await CreateErrorDatabase();
     }
 
-    public async Task RunBulkCopy()
+    public async Task RunBulkCopy(string? path = null)
     {
-        var path = CreateTestCsvFile();
+        path ??= CreateTestCsvFile();
 
         await BuildApplication();
         var (exitCode, output, error) = await RunBulkCopyAndGetOutput(path,
@@ -59,6 +59,8 @@ public class BulkCopyIntegrationTestFixture : IAsyncLifetime
                 { "error-table", ErrorTable },
                 { "trust-server-certificate", "true"}
             });
+        
+        Console.WriteLine(output);
         
         if (exitCode != 0)
         {
@@ -166,6 +168,20 @@ public class BulkCopyIntegrationTestFixture : IAsyncLifetime
                          23,Wendy Scott,41,91000.00,1,a,2024-01-23 12:12:12,93.3,Bad Date,EMPL023
                          24,Xavier Adams,27,68000.00,1,1997-07-07,2024-01-24 13:13:13,85.5,Too long code,EMPL024LONG
                          25,Yara Perez,26,62000.00,1,1998-02-02,2024-01-25 14:14:14,84.0,Recent grad,EMPL025
+                         """;
+
+        var fileName = RandomTestFileName();
+        File.WriteAllText(fileName, csvContent);
+        return fileName;
+    }
+
+    public string CreateReorderedColumnsTestCsvFile()
+    {
+        // Keep this dataset simple (no embedded newlines/quotes) so we can safely reorder columns.
+        var csvContent = """
+                         Name,ID,Age,Salary,IsActive,CreatedAt,Score,Description,Code,BirthDate
+                         Alice Johnson,1,30,75000.50,1,2024-01-01 10:00:00,95.5,Excellent employee,EMPL001,1993-05-15
+                         Bob Smith,2,25,65000.00,1,2024-01-02 11:30:00,88.3,Good performer,EMPL002,1998-08-22
                          """;
 
         var fileName = RandomTestFileName();
