@@ -10,7 +10,6 @@ namespace BulkCopy;
 ///     This parser expects comma-separated values, with optional quotes (").<br />
 ///     The file must be UTF-8 encoded.<br />
 ///     By default, "␀" is treated as a null value. This can be overridden by passing a different null character.
-///     If the field is quoted, it will never be treated as a null value.
 /// </remarks>
 public static class CsvParser
 {
@@ -190,8 +189,8 @@ public static class CsvParser
             // Unescape doubled quotes
             field = field.Replace("\"\"", "\"");
         }
-        // If not quoted and matches null character, return null
-        else if (nullChar != null && field == nullChar)
+
+        if (nullChar != null && field == nullChar)
         {
             return null;
         }
