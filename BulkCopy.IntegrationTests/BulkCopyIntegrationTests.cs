@@ -1,15 +1,16 @@
+using BulkCopy.IntegrationTests.Fixtures;
 using Microsoft.Data.SqlClient;
 
 namespace BulkCopy.IntegrationTests;
 
-public class BulkCopyIntegrationTests(BulkCopyIntegrationRunFixture fixture)
-    : IClassFixture<BulkCopyIntegrationRunFixture>
+public class BulkCopyIntegrationTests(RunFixture fixture)
+    : IClassFixture<RunFixture>
 {
     [Fact]
     public async Task BulkCopy_InsertsExpectedNumberOfValidRows()
     {
         await using var connection = await fixture.OpenConnectionToTestDbAsync();
-        var validRowCount = await GetRowCount(connection, BulkCopyIntegrationTestFixture.TestTable);
+        var validRowCount = await GetRowCount(connection, TestFixture.TestTable);
         Assert.Equal(19, validRowCount); // 25 total - 6 bad rows
     }
 
@@ -18,7 +19,7 @@ public class BulkCopyIntegrationTests(BulkCopyIntegrationRunFixture fixture)
     {
         await using var connection = await fixture.OpenConnectionToTestDbAsync();
         var badRowsCount = await GetCountForIds(connection,
-            BulkCopyIntegrationTestFixture.TestTable,
+            TestFixture.TestTable,
             new[] { 6, 11, 16, 21, 23, 24 });
         Assert.Equal(0, badRowsCount);
     }
@@ -28,7 +29,7 @@ public class BulkCopyIntegrationTests(BulkCopyIntegrationRunFixture fixture)
     {
         await using var connection = await fixture.OpenConnectionToTestDbAsync();
         var goodRowsCount = await GetCountForIds(connection,
-            BulkCopyIntegrationTestFixture.TestTable,
+            TestFixture.TestTable,
             new[] { 1, 5, 10, 15, 20 });
         Assert.Equal(5, goodRowsCount);
     }
@@ -38,7 +39,7 @@ public class BulkCopyIntegrationTests(BulkCopyIntegrationRunFixture fixture)
     {
         await using var connection = await fixture.OpenConnectionToTestDbAsync();
 
-        var description = await GetDescriptionForId(connection, BulkCopyIntegrationTestFixture.TestTable, 5);
+        var description = await GetDescriptionForId(connection, TestFixture.TestTable, 5);
         Assert.NotNull(description);
 
         var normalized = description!.Replace("\r\n", "\n");
@@ -50,7 +51,7 @@ public class BulkCopyIntegrationTests(BulkCopyIntegrationRunFixture fixture)
     {
         await using var connection = await fixture.OpenConnectionToTestDbAsync();
 
-        var description = await GetDescriptionForId(connection, BulkCopyIntegrationTestFixture.TestTable, 9);
+        var description = await GetDescriptionForId(connection, TestFixture.TestTable, 9);
         Assert.NotNull(description);
 
         Assert.Equal("Consis \"tent\" ", description);
@@ -61,7 +62,7 @@ public class BulkCopyIntegrationTests(BulkCopyIntegrationRunFixture fixture)
     {
         await using var connection = await fixture.OpenConnectionToTestDbAsync();
         await using var command =
-            new SqlCommand($"SELECT * FROM {BulkCopyIntegrationTestFixture.TestTable} WHERE salary is null;",
+            new SqlCommand($"SELECT * FROM {TestFixture.TestTable} WHERE salary is null;",
                 connection);
         await using var reader = await command.ExecuteReaderAsync();
         var result = await reader.ReadAsync();
@@ -74,7 +75,7 @@ public class BulkCopyIntegrationTests(BulkCopyIntegrationRunFixture fixture)
     public async Task BulkCopy_CreatesErrorTable()
     {
         await using var connection = await fixture.OpenConnectionToErrorDbAsync();
-        var errorTableExists = await TableExists(connection, BulkCopyIntegrationTestFixture.ErrorTable);
+        var errorTableExists = await TableExists(connection, TestFixture.ErrorTable);
         Assert.True(errorTableExists, "Error table should exist");
     }
 
@@ -82,7 +83,7 @@ public class BulkCopyIntegrationTests(BulkCopyIntegrationRunFixture fixture)
     public async Task BulkCopy_LogsExpectedNumberOfErrors()
     {
         await using var connection = await fixture.OpenConnectionToErrorDbAsync();
-        var errorCount = await GetRowCount(connection, BulkCopyIntegrationTestFixture.ErrorTable);
+        var errorCount = await GetRowCount(connection, TestFixture.ErrorTable);
         Assert.Equal(6, errorCount);
     }
 
@@ -90,7 +91,7 @@ public class BulkCopyIntegrationTests(BulkCopyIntegrationRunFixture fixture)
     public async Task BulkCopy_ErrorTableHasSevenColumns()
     {
         await using var connection = await fixture.OpenConnectionToErrorDbAsync();
-        var columnCount = await GetColumnCount(connection, BulkCopyIntegrationTestFixture.ErrorTable);
+        var columnCount = await GetColumnCount(connection, TestFixture.ErrorTable);
         Assert.Equal(7, columnCount);
     }
 
@@ -98,7 +99,7 @@ public class BulkCopyIntegrationTests(BulkCopyIntegrationRunFixture fixture)
     public async Task BulkCopy_ErrorRowsHaveExpectedRowNumbers()
     {
         await using var connection = await fixture.OpenConnectionToErrorDbAsync();
-        var errorRowNumbers = await GetErrorRowNumbers(connection, BulkCopyIntegrationTestFixture.ErrorTable);
+        var errorRowNumbers = await GetErrorRowNumbers(connection, TestFixture.ErrorTable);
         Assert.Contains(6, errorRowNumbers);
         Assert.Contains(11, errorRowNumbers);
         Assert.Contains(16, errorRowNumbers);
@@ -112,9 +113,9 @@ public class BulkCopyIntegrationTests(BulkCopyIntegrationRunFixture fixture)
         await using var connection = await fixture.OpenConnectionToErrorDbAsync();
         var sourceDbCheck = await CountRowsWithSource(
             connection,
-            BulkCopyIntegrationTestFixture.ErrorTable,
-            BulkCopyIntegrationTestFixture.TestDatabase,
-            BulkCopyIntegrationTestFixture.TestTable);
+            TestFixture.ErrorTable,
+            TestFixture.TestDatabase,
+            TestFixture.TestTable);
         Assert.Equal(6, sourceDbCheck);
     }
 
@@ -124,13 +125,13 @@ public class BulkCopyIntegrationTests(BulkCopyIntegrationRunFixture fixture)
         await using var connection = await fixture.OpenConnectionToErrorDbAsync();
         var rowDataCheck =
             await CountRowsWhereColumnHasLength(connection,
-                BulkCopyIntegrationTestFixture.ErrorTable,
+                TestFixture.ErrorTable,
                 "CsvRowData",
                 10);
         Assert.Equal(6, rowDataCheck);
 
         var errorMsgCheck = await CountRowsWhereColumnHasLength(connection,
-            BulkCopyIntegrationTestFixture.ErrorTable,
+            TestFixture.ErrorTable,
             "ErrorMessage",
             10);
         Assert.Equal(6, errorMsgCheck);

@@ -28,11 +28,11 @@ public partial class Program
 
         var batchSizeOption = new Option<int>("--batch-size")
         {
-            Description = "The number of rows to insert per batch, default 500 (env:BULKCOPY_BATCH_SIZE).",
+            Description = "The number of rows to insert per batch, default 2000 (env:BULKCOPY_BATCH_SIZE).",
             DefaultValueFactory = result =>
             {
                 var val = Environment.GetEnvironmentVariable("BULKCOPY_BATCH_SIZE");
-                return val != null ? int.Parse(val) : 500;
+                return val != null ? int.Parse(val) : 2000;
             }
         };
 
@@ -211,9 +211,10 @@ public partial class Program
                 return 1;
             }
 
+            var doEmpty = false;
             if (empty.HasValue && empty.Value)
             {
-                await EmptyTable(new SqlConnection(connectionString), database ?? sqlBuilder.InitialCatalog, schema, table);
+                doEmpty = true;
             }
 
             var exitCode = ExecuteBulkCopy(
@@ -224,7 +225,8 @@ public partial class Program
                 batchSize,
                 errorDatabase,
                 errorTable,
-                nullChar
+                nullChar,
+                doEmpty
             );
 
             return exitCode;
@@ -264,7 +266,8 @@ public partial class Program
         int batchSize,
         string? errorDatabase,
         string errorTable,
-        string nullChar
+        string nullChar,
+        bool doEmpty
     )
     {
         try
@@ -299,7 +302,8 @@ public partial class Program
                 batchSize,
                 errorDatabase,
                 errorTable,
-                nullChar);
+                nullChar,
+                doEmpty);
 
             bulkCopyStopwatch.Stop();
             Console.WriteLine(
@@ -316,12 +320,58 @@ public partial class Program
         }
     }
 
-    private static void ConfigureColumnMappings(SqlBulkCopy bulkCopy, int columnCount)
+    private static List<(int, int)> LoadColumnMappings(
+        SqlConnection connection,
+        IReadOnlyList<string> sourceColumnNames,
+        string schema,
+        string destinationTable)
     {
-        // Map columns by ordinal position
-        for (var i = 0; i < columnCount; i++)
+        const string sql = """
+                           SELECT name
+                           FROM sys.columns
+                           WHERE object_id = OBJECT_ID(@ObjectId)
+                           ORDER BY column_id;
+                           """;
+
+        using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@ObjectId", $"[{schema}].[{destinationTable}]");
+
+        using var reader = command.ExecuteReader();
+        var columns = new List<string>();
+        while (reader.Read())
         {
-            bulkCopy.ColumnMappings.Add(i, i);
+            columns.Add(reader.GetString(0));
+        }
+
+        if (columns.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"Destination table not found or has no columns: [{schema}].[{destinationTable}]");
+        }
+
+        List<(int, int)> mappings = [];
+        
+        foreach (var (i, sourceColumnName) in sourceColumnNames.Index())
+        {
+            var columnIndex = columns.IndexOf(sourceColumnName);
+            if (columnIndex == -1)
+            {
+                throw new InvalidOperationException(
+                    $"CSV column '{sourceColumnName}' does not exist in destination table '{schema}.{destinationTable}'.");
+            }
+            mappings.Add((i, columnIndex));
+        }
+
+        return mappings;
+    }
+
+    private static void ConfigureColumnMappings(
+        SqlBulkCopy bulkCopy,
+        IReadOnlyList<(int, int)> mappings)
+    {
+        foreach (var (sourceColumnIndex, destinationColumnIndex) in mappings)
+        {
+            bulkCopy.ColumnMappings.Add(sourceColumnIndex, destinationColumnIndex);
         }
     }
 
@@ -333,7 +383,8 @@ public partial class Program
         int batchSize,
         string? errorDatabase,
         string errorTable,
-        string nullChar
+        string nullChar,
+        bool doEmpty
     )
     {
         var successCount = 0;
@@ -350,6 +401,11 @@ public partial class Program
             {
                 EnsureErrorTableExists(connection, errorDatabase, errorTable);
             }
+            
+            if (doEmpty) 
+            {
+                EmptyTable(connection, destinationDatabase, schema, destinationTable);
+            }
 
             using (var csvReader = new CsvDataReader(csvFilePath, nullChar))
             using (var batchedReader = new BatchedCsvReader(csvReader, batchSize))
@@ -357,6 +413,8 @@ public partial class Program
                 csvReader.ReadHeader();
                 // Get CSV headers for error logging
                 var csvHeaders = string.Join(",", batchedReader.ColumnNames);
+
+                var mappings = LoadColumnMappings(connection, csvReader.ColumnNames, schema, destinationTable);
 
                 while (batchedReader.HasMoreRows)
                 {
@@ -375,6 +433,7 @@ public partial class Program
                         batchTable,
                         batchStartRow,
                         csvHeaders,
+                        mappings,
                         destinationDatabase,
                         errorDatabase,
                         errorTable);
@@ -395,6 +454,7 @@ public partial class Program
         DataTable batchTable,
         int batchStartRow,
         string csvHeaders,
+        IReadOnlyList<(int, int)> mappings,
         string destinationDatabase,
         string? errorDatabase,
         string? errorTable
@@ -413,7 +473,7 @@ public partial class Program
             bulkCopy.BatchSize = rowsInBatch;
             bulkCopy.BulkCopyTimeout = 30;
 
-            ConfigureColumnMappings(bulkCopy, batchTable.Columns.Count);
+            ConfigureColumnMappings(bulkCopy, mappings);
 
             bulkCopy.WriteToServer(batchTable);
             successCount += rowsInBatch;
@@ -437,8 +497,8 @@ public partial class Program
                     bulkCopy.DestinationTableName = destination;
                     bulkCopy.BatchSize = 1;
                     bulkCopy.BulkCopyTimeout = 30;
-
-                    ConfigureColumnMappings(bulkCopy, batchTable.Columns.Count);
+                    
+                    ConfigureColumnMappings(bulkCopy, mappings);
 
                     bulkCopy.WriteToServer(new[] { singleRow });
                     successCount++;
@@ -468,11 +528,12 @@ public partial class Program
         return (successCount, failedCount);
     }
 
-    private static async Task EmptyTable(SqlConnection connection, string database, string schema, string table)
+    private static void EmptyTable(SqlConnection connection, string database, string schema, string table)
     {
         var destination = $"[{database}].[{schema}].[{table}]";
-        await using var command = new SqlCommand($"DELETE FROM {destination}", connection);
-        await command.ExecuteNonQueryAsync();
+        Console.WriteLine($"Emptying table {destination}");
+        using var command = new SqlCommand($"DELETE FROM {destination}", connection);
+        command.ExecuteNonQuery();
     }
 
     private static void EnsureErrorTableExists(SqlConnection connection, string errorDatabase, string errorTable)

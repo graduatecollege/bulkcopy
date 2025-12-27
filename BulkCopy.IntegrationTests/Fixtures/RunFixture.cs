@@ -1,6 +1,6 @@
-﻿namespace BulkCopy.IntegrationTests;
+﻿namespace BulkCopy.IntegrationTests.Fixtures;
 
-public class BulkCopyIntegrationRunFixture : BulkCopyIntegrationTestFixture
+public class RunFixture : TestFixture
 {
     public override async Task InitializeAsync()
     {

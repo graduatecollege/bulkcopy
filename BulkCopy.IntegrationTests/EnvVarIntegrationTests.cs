@@ -1,12 +1,13 @@
 ﻿using Microsoft.Data.SqlClient;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using BulkCopy.IntegrationTests.Fixtures;
 using Xunit;
 
 namespace BulkCopy.IntegrationTests;
 
-public sealed class EnvVarIntegrationTests(BulkCopyIntegrationTestFixture fixture)
-    : IClassFixture<BulkCopyIntegrationTestFixture>
+public sealed class EnvVarIntegrationTests(TestFixture fixture)
+    : IClassFixture<TestFixture>
 {
     [Fact]
     public async Task BulkCopy_UsesConnectionStringFromEnv()
@@ -15,7 +16,7 @@ public sealed class EnvVarIntegrationTests(BulkCopyIntegrationTestFixture fixtur
         await fixture.CreateTestTable(tableName);
         var path = fixture.CreateTestCsvFile();
 
-        var fullConnectionString = $"{fixture.ConnectionString};Database={BulkCopyIntegrationTestFixture.TestDatabase}";
+        var fullConnectionString = $"{fixture.ConnectionString};Database={TestFixture.TestDatabase}";
 
         var envVars = new Dictionary<string, string>
         {
@@ -59,7 +60,7 @@ public sealed class EnvVarIntegrationTests(BulkCopyIntegrationTestFixture fixtur
         var (exitCode, output, error) = await fixture.RunBulkCopyAndGetOutput(path,
             new()
             {
-                { "database", BulkCopyIntegrationTestFixture.TestDatabase },
+                { "database", TestFixture.TestDatabase },
                 { "table", tableName },
                 { "trust-server-certificate", "true" }
             },
@@ -82,13 +83,13 @@ public sealed class EnvVarIntegrationTests(BulkCopyIntegrationTestFixture fixtur
         await fixture.CreateTestTable(tableName);
         var path = fixture.CreateTestCsvFile();
 
-        var fullConnectionString = $"{fixture.ConnectionString};Database={BulkCopyIntegrationTestFixture.TestDatabase}";
+        var fullConnectionString = $"{fixture.ConnectionString};Database={TestFixture.TestDatabase}";
 
         var envVars = new Dictionary<string, string>
         {
             { "BULKCOPY_CONNECTION_STRING", fullConnectionString },
             { "BULKCOPY_TABLE", tableName },
-            { "BULKCOPY_DATABASE", BulkCopyIntegrationTestFixture.TestDatabase }
+            { "BULKCOPY_DATABASE", TestFixture.TestDatabase }
         };
 
         // Call without connection string, table name or database arguments/options
@@ -112,7 +113,7 @@ public sealed class EnvVarIntegrationTests(BulkCopyIntegrationTestFixture fixtur
         await fixture.CreateTestTable(tableName);
         var path = fixture.CreateTestCsvFile();
 
-        var fullConnectionString = $"{fixture.ConnectionString};Database={BulkCopyIntegrationTestFixture.TestDatabase}";
+        var fullConnectionString = $"{fixture.ConnectionString};Database={TestFixture.TestDatabase}";
 
         var envVars = new Dictionary<string, string>
         {
@@ -145,7 +146,7 @@ public sealed class EnvVarIntegrationTests(BulkCopyIntegrationTestFixture fixtur
         await fixture.CreateTestTable(tableNameOpt);
         var path = fixture.CreateTestCsvFile();
 
-        var fullConnectionString = $"{fixture.ConnectionString};Database={BulkCopyIntegrationTestFixture.TestDatabase}";
+        var fullConnectionString = $"{fixture.ConnectionString};Database={TestFixture.TestDatabase}";
 
         var envVars = new Dictionary<string, string>
         {
@@ -174,6 +175,7 @@ public sealed class EnvVarIntegrationTests(BulkCopyIntegrationTestFixture fixtur
         {
             return count;
         }
+
         throw new InvalidCastException($"Cannot convert {value} to int.");
     }
 }
