@@ -175,6 +175,13 @@ public class TestFixture : IAsyncLifetime
         return fileName;
     }
 
+    public string CreateEmptyCsvFile()
+    {
+        var fileName = RandomTestFileName();
+        File.WriteAllText(fileName, string.Empty);
+        return fileName;
+    }
+
     public string CreateReorderedColumnsTestCsvFile()
     {
         // Keep this dataset simple (no embedded newlines/quotes) so we can safely reorder columns.

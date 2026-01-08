@@ -82,6 +82,11 @@ public partial class Program
             Description = "Empty the destination table before importing (no env variable)."
         };
 
+        var allowEmptyCsvOption = new Option<bool?>("--allow-empty-csv")
+        {
+            Description = "Normally the program exits with an error if the CSV is empty. When this flag is provided, a warning is logged instead. (no env variable)."
+        };
+
         var timeoutOption = new Option<int?>("--timeout")
         {
             Description = "Connection timeout in seconds, defaults to 30 (env:BULKCOPY_TIMEOUT).",
@@ -123,6 +128,7 @@ public partial class Program
             passwordOption,
             trustServerCertificateOption,
             emptyOption,
+            allowEmptyCsvOption,
             timeoutOption,
             databaseOption,
             schemaOption,
@@ -154,6 +160,7 @@ public partial class Program
             var table = parseResult.GetValue(tableOption);
             var trustServerCertificate = parseResult.GetValue(trustServerCertificateOption);
             var empty = parseResult.GetValue(emptyOption);
+            var allowEmptyCsv = parseResult.GetValue(allowEmptyCsvOption);
             var timeout = parseResult.GetValue(timeoutOption);
             var errorDatabase = parseResult.GetValue(errorDatabaseOption);
             var errorTable = parseResult.GetRequiredValue(errorTableOption);
@@ -217,6 +224,8 @@ public partial class Program
                 doEmpty = true;
             }
 
+            var allowEmptyCsvValue = allowEmptyCsv.HasValue && allowEmptyCsv.Value;
+
             var exitCode = ExecuteBulkCopy(
                 csvFile,
                 connectionString,
@@ -226,7 +235,8 @@ public partial class Program
                 errorDatabase,
                 errorTable,
                 nullChar,
-                doEmpty
+                doEmpty,
+                allowEmptyCsvValue
             );
 
             return exitCode;
@@ -267,7 +277,8 @@ public partial class Program
         string? errorDatabase,
         string errorTable,
         string nullChar,
-        bool doEmpty
+        bool doEmpty,
+        bool allowEmptyCsv
     )
     {
         try
@@ -303,7 +314,8 @@ public partial class Program
                 errorDatabase,
                 errorTable,
                 nullChar,
-                doEmpty);
+                doEmpty,
+                allowEmptyCsv);
 
             bulkCopyStopwatch.Stop();
             Console.WriteLine(
@@ -384,7 +396,8 @@ public partial class Program
         string? errorDatabase,
         string errorTable,
         string nullChar,
-        bool doEmpty
+        bool doEmpty,
+        bool allowEmptyCsv
     )
     {
         var successCount = 0;
@@ -410,7 +423,18 @@ public partial class Program
             using (var csvReader = new CsvDataReader(csvFilePath, nullChar))
             using (var batchedReader = new BatchedCsvReader(csvReader, batchSize))
             {
-                csvReader.ReadHeader();
+                if (allowEmptyCsv)
+                {
+                    if (!csvReader.TryReadHeader())
+                    {
+                        Console.WriteLine($"Warning: CSV file is empty: {csvFilePath}");
+                        return (0, 0);
+                    }
+                }
+                else
+                {
+                    csvReader.ReadHeader();
+                }
                 // Get CSV headers for error logging
                 var csvHeaders = string.Join(",", batchedReader.ColumnNames);
 

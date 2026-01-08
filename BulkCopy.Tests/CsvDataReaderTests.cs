@@ -98,6 +98,17 @@ public class CsvDataReaderTests
     }
 
     [Fact]
+    public void CsvDataReader_TryReadHeader_EmptyCsv_ReturnsFalse()
+    {
+        var csvContent = "";
+        var stream = new MemoryStream(Encoding.UTF8.GetBytes(csvContent));
+        var reader = new StreamReader(stream);
+        using var csvReader = new CsvDataReader(reader);
+
+        Assert.False(csvReader.TryReadHeader());
+    }
+
+    [Fact]
     public void CsvDataReader_GetValue_ReturnsCorrectValue()
     {
         var csvContent = "Name,Age\nJohn,30";

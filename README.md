@@ -45,6 +45,7 @@ Options:
 -  `--password <password>` The SQL Server password (env:BULKCOPY_PASSWORD).
 -  `--trust-server-certificate` Trust server certificate (no env variable).
 -  `--empty` Empty the destination table before importing (no env variable).
+-  `--allow-empty-csv` Normally the program exits with an error if the CSV is empty. When this flag is provided, a warning is logged instead. (no env variable).
 -  `--timeout <timeout>` Connection timeout in seconds, defaults to 30 (env:BULKCOPY_TIMEOUT).
 -  `--database <database>` The destination database name (env:BULKCOPY_DATABASE).
 -  `--schema <schema>` The destination schema name (env:BULKCOPY_SCHEMA).

@@ -1,5 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 using BulkCopy.IntegrationTests.Fixtures;
 using Xunit;
@@ -9,7 +8,6 @@ namespace BulkCopy.IntegrationTests;
 public sealed class EmptyIntegrationTests(TestFixture fixture)
     : IClassFixture<TestFixture>
 {
-
     [Fact]
     public async Task BulkCopy_WithEmpty_HasNoDuplicates()
     {

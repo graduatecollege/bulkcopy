@@ -39,7 +39,7 @@ public sealed class CsvDataReader(StreamReader reader, string? nullChar = "␀")
 
     public bool IsClosed { get; private set; }
 
-    public void ReadHeader()
+    public bool TryReadHeader()
     {
         if (_headerRead)
         {
@@ -49,13 +49,22 @@ public sealed class CsvDataReader(StreamReader reader, string? nullChar = "␀")
         var headerRow = CsvParser.ReadCsvRow(reader);
         if (string.IsNullOrEmpty(headerRow))
         {
-            throw new FormatException("CSV file is empty or has no header row.");
+            return false;
         }
 
         _columnNames = CsvParser.ParseCsvLine(headerRow, null)
             .Select(h => h?.Trim() ?? "")
             .ToArray();
         _headerRead = true;
+        return true;
+    }
+
+    public void ReadHeader()
+    {
+        if (!TryReadHeader())
+        {
+            throw new FormatException("CSV file is empty or has no header row.");
+        }
     }
 
     public bool Read()
