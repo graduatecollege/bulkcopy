@@ -8,6 +8,13 @@ using Microsoft.Data.SqlClient;
 
 namespace BulkCopy;
 
+/// <summary>
+/// Metadata about a column in the destination table.
+/// </summary>
+/// <param name="Name">Column name</param>
+/// <param name="TypeName">SQL Server type name (e.g., "bit", "int", "nvarchar")</param>
+internal record ColumnInfo(string Name, string TypeName);
+
 public partial class Program
 {
     [GeneratedRegex("^[a-zA-Z_][a-zA-Z0-9_]*$", RegexOptions.Compiled)]
@@ -332,30 +339,33 @@ public partial class Program
         }
     }
 
-    private static List<(int, int)> LoadColumnMappings(
+    private static (List<(int, int)> Mappings, List<ColumnInfo> ColumnMetadata) LoadColumnMappings(
         SqlConnection connection,
         IReadOnlyList<string> sourceColumnNames,
         string schema,
         string destinationTable)
     {
         const string sql = """
-                           SELECT name
-                           FROM sys.columns
-                           WHERE object_id = OBJECT_ID(@ObjectId)
-                           ORDER BY column_id;
+                           SELECT c.name, t.name AS type_name
+                           FROM sys.columns c
+                           INNER JOIN sys.types t ON c.user_type_id = t.user_type_id
+                           WHERE c.object_id = OBJECT_ID(@ObjectId)
+                           ORDER BY c.column_id;
                            """;
 
         using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@ObjectId", $"[{schema}].[{destinationTable}]");
 
         using var reader = command.ExecuteReader();
-        var columns = new List<string>();
+        var columnMetadata = new List<ColumnInfo>();
         while (reader.Read())
         {
-            columns.Add(reader.GetString(0));
+            var name = reader.GetString(0);
+            var typeName = reader.GetString(1);
+            columnMetadata.Add(new ColumnInfo(name, typeName));
         }
 
-        if (columns.Count == 0)
+        if (columnMetadata.Count == 0)
         {
             throw new InvalidOperationException(
                 $"Destination table not found or has no columns: [{schema}].[{destinationTable}]");
@@ -365,7 +375,8 @@ public partial class Program
         
         foreach (var (i, sourceColumnName) in sourceColumnNames.Index())
         {
-            var columnIndex = columns.IndexOf(sourceColumnName);
+            var columnIndex = columnMetadata.FindIndex(c => 
+                c.Name.Equals(sourceColumnName, StringComparison.OrdinalIgnoreCase));
             if (columnIndex == -1)
             {
                 throw new InvalidOperationException(
@@ -374,43 +385,17 @@ public partial class Program
             mappings.Add((i, columnIndex));
         }
 
-        return mappings;
+        return (mappings, columnMetadata);
     }
 
-    private static HashSet<string> LoadBitColumns(
-        SqlConnection connection,
-        string schema,
-        string destinationTable)
+    internal static DataTable ConvertBitColumnsInDataTable(DataTable dataTable, List<ColumnInfo> columnMetadata)
     {
-        // Validate identifiers (should already be sanitized by caller, but validate defensively)
-        if (!SqlIdentifierRegex().IsMatch(schema))
-            throw new ArgumentException("Invalid schema identifier", nameof(schema));
-        if (!SqlIdentifierRegex().IsMatch(destinationTable))
-            throw new ArgumentException("Invalid table identifier", nameof(destinationTable));
+        // Extract BIT column names from metadata
+        var bitColumnNames = new HashSet<string>(
+            columnMetadata.Where(c => c.TypeName.Equals("bit", StringComparison.OrdinalIgnoreCase))
+                          .Select(c => c.Name),
+            StringComparer.OrdinalIgnoreCase);
 
-        const string sql = """
-                           SELECT c.name
-                           FROM sys.columns c
-                           INNER JOIN sys.types t ON c.user_type_id = t.user_type_id
-                           WHERE c.object_id = OBJECT_ID(@ObjectId)
-                           AND t.name = 'bit';
-                           """;
-
-        using var command = new SqlCommand(sql, connection);
-        command.Parameters.AddWithValue("@ObjectId", $"[{schema}].[{destinationTable}]");
-
-        using var reader = command.ExecuteReader();
-        var bitColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        while (reader.Read())
-        {
-            bitColumns.Add(reader.GetString(0));
-        }
-
-        return bitColumns;
-    }
-
-    internal static DataTable ConvertBitColumnsInDataTable(DataTable dataTable, HashSet<string> bitColumnNames)
-    {
         if (bitColumnNames.Count == 0)
         {
             return dataTable;
@@ -536,8 +521,7 @@ public partial class Program
                 // Get CSV headers for error logging
                 var csvHeaders = string.Join(",", batchedReader.ColumnNames);
 
-                var mappings = LoadColumnMappings(connection, csvReader.ColumnNames, schema, destinationTable);
-                var bitColumns = LoadBitColumns(connection, schema, destinationTable);
+                var (mappings, columnMetadata) = LoadColumnMappings(connection, csvReader.ColumnNames, schema, destinationTable);
 
                 while (batchedReader.HasMoreRows)
                 {
@@ -548,7 +532,7 @@ public partial class Program
                     }
 
                     // Convert "0" and "1" strings to numbers for BIT columns
-                    batchTable = ConvertBitColumnsInDataTable(batchTable, bitColumns);
+                    batchTable = ConvertBitColumnsInDataTable(batchTable, columnMetadata);
 
                     var batchStartRow = batchedReader.CurrentRowNumber - batchTable.Rows.Count;
 
