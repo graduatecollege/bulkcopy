@@ -16,8 +16,7 @@ public sealed class BitColumnsFixture : TestFixture
 
     private async Task CreateBitTestTable()
     {
-        await using var connection = await OpenConnectionWithConnectionStringAsync(ConnectionString);
-        await connection.ChangeDatabaseAsync(TestDatabase);
+        await using var connection = await OpenConnectionAsync(TestDatabase);
         await using var createTableCommand = new SqlCommand(
             $"""
              CREATE TABLE {BitTestTable} (
@@ -50,7 +49,6 @@ public sealed class BitColumnsFixture : TestFixture
 
     private async Task RunBulkCopyForBitTest(string path)
     {
-        await BuildApplication();
         var (exitCode, output, error) = await RunBulkCopyAndGetOutput(path,
             new()
             {
@@ -69,12 +67,5 @@ public sealed class BitColumnsFixture : TestFixture
         {
             throw new Exception($"BulkCopy exited with code {exitCode}. Output: {output}. Error: {error}");
         }
-    }
-
-    private static async Task<SqlConnection> OpenConnectionWithConnectionStringAsync(string connectionString)
-    {
-        var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync();
-        return connection;
     }
 }
