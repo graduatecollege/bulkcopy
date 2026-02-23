@@ -382,6 +382,12 @@ public partial class Program
         string schema,
         string destinationTable)
     {
+        // Validate identifiers (should already be sanitized by caller, but validate defensively)
+        if (!SqlIdentifierRegex().IsMatch(schema))
+            throw new ArgumentException("Invalid schema identifier", nameof(schema));
+        if (!SqlIdentifierRegex().IsMatch(destinationTable))
+            throw new ArgumentException("Invalid table identifier", nameof(destinationTable));
+
         const string sql = """
                            SELECT c.name
                            FROM sys.columns c

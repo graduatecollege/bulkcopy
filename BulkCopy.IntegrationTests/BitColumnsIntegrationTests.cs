@@ -49,7 +49,13 @@ public class BitColumnsIntegrationTests(BitColumnsFixture fixture)
 
     private static async Task<bool> GetBitValue(SqlConnection connection, string tableName, string columnName, int id)
     {
-        await using var command = new SqlCommand($"SELECT {columnName} FROM {tableName} WHERE ID = @Id;", connection);
+        // Validate table and column names to prevent SQL injection
+        if (!System.Text.RegularExpressions.Regex.IsMatch(tableName, "^[a-zA-Z_][a-zA-Z0-9_]*$"))
+            throw new ArgumentException("Invalid table name", nameof(tableName));
+        if (!System.Text.RegularExpressions.Regex.IsMatch(columnName, "^[a-zA-Z_][a-zA-Z0-9_]*$"))
+            throw new ArgumentException("Invalid column name", nameof(columnName));
+
+        await using var command = new SqlCommand($"SELECT [{columnName}] FROM [{tableName}] WHERE ID = @Id;", connection);
         command.Parameters.AddWithValue("@Id", id);
         
         var result = await command.ExecuteScalarAsync();
