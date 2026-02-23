@@ -377,6 +377,98 @@ public partial class Program
         return mappings;
     }
 
+    private static HashSet<string> LoadBitColumns(
+        SqlConnection connection,
+        string schema,
+        string destinationTable)
+    {
+        const string sql = """
+                           SELECT c.name
+                           FROM sys.columns c
+                           INNER JOIN sys.types t ON c.user_type_id = t.user_type_id
+                           WHERE c.object_id = OBJECT_ID(@ObjectId)
+                           AND t.name = 'bit';
+                           """;
+
+        using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@ObjectId", $"[{schema}].[{destinationTable}]");
+
+        using var reader = command.ExecuteReader();
+        var bitColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (reader.Read())
+        {
+            bitColumns.Add(reader.GetString(0));
+        }
+
+        return bitColumns;
+    }
+
+    internal static DataTable ConvertBitColumnsInDataTable(DataTable dataTable, HashSet<string> bitColumnNames)
+    {
+        if (bitColumnNames.Count == 0)
+        {
+            return dataTable;
+        }
+
+        // Check if any columns in the DataTable are BIT columns
+        var hasBitColumns = false;
+        for (var i = 0; i < dataTable.Columns.Count; i++)
+        {
+            if (bitColumnNames.Contains(dataTable.Columns[i].ColumnName))
+            {
+                hasBitColumns = true;
+                break;
+            }
+        }
+
+        if (!hasBitColumns)
+        {
+            return dataTable;
+        }
+
+        // Create a new DataTable with object-typed columns for BIT columns
+        var newTable = new DataTable();
+        for (var i = 0; i < dataTable.Columns.Count; i++)
+        {
+            var columnName = dataTable.Columns[i].ColumnName;
+            var columnType = bitColumnNames.Contains(columnName) ? typeof(object) : typeof(string);
+            newTable.Columns.Add(columnName, columnType);
+        }
+
+        // Copy rows with conversion
+        foreach (DataRow oldRow in dataTable.Rows)
+        {
+            var newRow = newTable.NewRow();
+            for (var i = 0; i < dataTable.Columns.Count; i++)
+            {
+                var value = oldRow[i];
+                if (bitColumnNames.Contains(dataTable.Columns[i].ColumnName) && value is string stringValue)
+                {
+                    if (stringValue == "0")
+                    {
+                        newRow[i] = 0;
+                    }
+                    else if (stringValue == "1")
+                    {
+                        newRow[i] = 1;
+                    }
+                    else
+                    {
+                        // Leave other values as-is to error naturally
+                        newRow[i] = value;
+                    }
+                }
+                else
+                {
+                    newRow[i] = value;
+                }
+            }
+            newTable.Rows.Add(newRow);
+        }
+
+        return newTable;
+    }
+
     private static void ConfigureColumnMappings(
         SqlBulkCopy bulkCopy,
         IReadOnlyList<(int, int)> mappings)
@@ -439,6 +531,7 @@ public partial class Program
                 var csvHeaders = string.Join(",", batchedReader.ColumnNames);
 
                 var mappings = LoadColumnMappings(connection, csvReader.ColumnNames, schema, destinationTable);
+                var bitColumns = LoadBitColumns(connection, schema, destinationTable);
 
                 while (batchedReader.HasMoreRows)
                 {
@@ -447,6 +540,9 @@ public partial class Program
                     {
                         break;
                     }
+
+                    // Convert "0" and "1" strings to numbers for BIT columns
+                    batchTable = ConvertBitColumnsInDataTable(batchTable, bitColumns);
 
                     var batchStartRow = batchedReader.CurrentRowNumber - batchTable.Rows.Count;
 

@@ -174,4 +174,139 @@ public class ProgramTests
         var input = Path.Join(".", "nonexistent.txt");
         Assert.Throws<ArgumentException>(() => Program.ResolveConnectionString(input));
     }
+
+    [Fact]
+    public void ConvertBitColumnsInDataTable_WithZeroString_ConvertsToNumericZero()
+    {
+        var table = new DataTable();
+        table.Columns.Add("ID", typeof(string));
+        table.Columns.Add("IsActive", typeof(string));
+        table.Rows.Add("1", "0");
+
+        var bitColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IsActive" };
+        var result = Program.ConvertBitColumnsInDataTable(table, bitColumns);
+
+        var value = result.Rows[0]["IsActive"];
+        Assert.IsType<int>(value);
+        Assert.Equal(0, value);
+    }
+
+    [Fact]
+    public void ConvertBitColumnsInDataTable_WithOneString_ConvertsToNumericOne()
+    {
+        var table = new DataTable();
+        table.Columns.Add("ID", typeof(string));
+        table.Columns.Add("IsActive", typeof(string));
+        table.Rows.Add("1", "1");
+
+        var bitColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IsActive" };
+        var result = Program.ConvertBitColumnsInDataTable(table, bitColumns);
+
+        var value = result.Rows[0]["IsActive"];
+        Assert.IsType<int>(value);
+        Assert.Equal(1, value);
+    }
+
+    [Fact]
+    public void ConvertBitColumnsInDataTable_WithOtherString_LeavesUnchanged()
+    {
+        var table = new DataTable();
+        table.Columns.Add("ID", typeof(string));
+        table.Columns.Add("IsActive", typeof(string));
+        table.Rows.Add("1", "true");
+
+        var bitColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IsActive" };
+        var result = Program.ConvertBitColumnsInDataTable(table, bitColumns);
+
+        Assert.Equal("true", result.Rows[0]["IsActive"]);
+    }
+
+    [Fact]
+    public void ConvertBitColumnsInDataTable_WithMultipleBitColumns_ConvertsAll()
+    {
+        var table = new DataTable();
+        table.Columns.Add("ID", typeof(string));
+        table.Columns.Add("IsActive", typeof(string));
+        table.Columns.Add("IsDeleted", typeof(string));
+        table.Rows.Add("1", "1", "0");
+
+        var bitColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IsActive", "IsDeleted" };
+        var result = Program.ConvertBitColumnsInDataTable(table, bitColumns);
+
+        var isActiveValue = result.Rows[0]["IsActive"];
+        var isDeletedValue = result.Rows[0]["IsDeleted"];
+        Assert.IsType<int>(isActiveValue);
+        Assert.IsType<int>(isDeletedValue);
+        Assert.Equal(1, isActiveValue);
+        Assert.Equal(0, isDeletedValue);
+    }
+
+    [Fact]
+    public void ConvertBitColumnsInDataTable_WithEmptyBitColumns_ReturnsOriginalTable()
+    {
+        var table = new DataTable();
+        table.Columns.Add("ID", typeof(string));
+        table.Columns.Add("IsActive", typeof(string));
+        table.Rows.Add("1", "1");
+
+        var bitColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = Program.ConvertBitColumnsInDataTable(table, bitColumns);
+
+        Assert.Same(table, result);
+        Assert.Equal("1", result.Rows[0]["IsActive"]);
+    }
+
+    [Fact]
+    public void ConvertBitColumnsInDataTable_WithNonStringValue_LeavesUnchanged()
+    {
+        var table = new DataTable();
+        table.Columns.Add("ID", typeof(string));
+        table.Columns.Add("IsActive", typeof(int));
+        table.Rows.Add("1", 42);
+
+        var bitColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IsActive" };
+        var result = Program.ConvertBitColumnsInDataTable(table, bitColumns);
+
+        Assert.Equal(42, result.Rows[0]["IsActive"]);
+    }
+
+    [Fact]
+    public void ConvertBitColumnsInDataTable_CaseInsensitiveColumnName_ConvertsCorrectly()
+    {
+        var table = new DataTable();
+        table.Columns.Add("ID", typeof(string));
+        table.Columns.Add("IsActive", typeof(string));
+        table.Rows.Add("1", "1");
+
+        var bitColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "isactive" };
+        var result = Program.ConvertBitColumnsInDataTable(table, bitColumns);
+
+        var value = result.Rows[0]["IsActive"];
+        Assert.IsType<int>(value);
+        Assert.Equal(1, value);
+    }
+
+    [Fact]
+    public void ConvertBitColumnsInDataTable_WithMultipleRows_ConvertsAll()
+    {
+        var table = new DataTable();
+        table.Columns.Add("ID", typeof(string));
+        table.Columns.Add("IsActive", typeof(string));
+        table.Rows.Add("1", "1");
+        table.Rows.Add("2", "0");
+        table.Rows.Add("3", "invalid");
+
+        var bitColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IsActive" };
+        var result = Program.ConvertBitColumnsInDataTable(table, bitColumns);
+
+        var value1 = result.Rows[0]["IsActive"];
+        var value2 = result.Rows[1]["IsActive"];
+        var value3 = result.Rows[2]["IsActive"];
+        Assert.IsType<int>(value1);
+        Assert.IsType<int>(value2);
+        Assert.IsType<string>(value3);
+        Assert.Equal(1, value1);
+        Assert.Equal(0, value2);
+        Assert.Equal("invalid", value3);
+    }
 }
