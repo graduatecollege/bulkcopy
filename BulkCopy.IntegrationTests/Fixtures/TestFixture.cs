@@ -19,8 +19,7 @@ public class TestFixture : IAsyncLifetime
     
     public TestFixture()
     {
-        _sqlContainer = new MsSqlBuilder()
-            .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
+        _sqlContainer = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest")
             .WithCleanUp(true)
             .Build();
     }
