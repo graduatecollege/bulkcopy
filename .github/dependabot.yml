@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      test-dependencies:
+        patterns:
+          - "coverlet.collector"
+          - "Microsoft.NET.Test.Sdk"
+          - "Testcontainers.MsSql"
+          - "xunit*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
